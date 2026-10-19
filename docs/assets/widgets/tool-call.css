@@ -45,13 +45,13 @@
 .tc-call + .tc-call { padding-top: .6rem; border-top: 1px dashed var(--border); }
 .tc-call-head { margin: 0 0 .35rem; font-size: .9rem; font-weight: 650; }
 .tc-bars { margin-top: .7rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
-.tc-bar-row { display: grid; grid-template-columns: 3.8rem minmax(3rem, 1fr) auto; gap: .5rem; align-items: center; margin: .3rem 0; font-size: .85rem; }
+.tc-bar-row { display: grid; grid-template-columns: 3.8rem minmax(2.5rem, 1fr) auto; gap: .5rem; align-items: center; margin: .3rem 0; font-size: .85rem; }
 .tc-bar-track { height: .7rem; border-radius: 3px; background: var(--bg-sunk); border: 1px solid var(--border); overflow: hidden; }
 .tc-bar { display: block; height: 100%; background: color-mix(in srgb, var(--c) 45%, transparent); border-right: 2px solid var(--c); }
 .tc-bar.is-failed { background: color-mix(in srgb, var(--bad) 45%, transparent); border-right-color: var(--bad); }
-.tc-bar-label { color: var(--text-2); white-space: nowrap; }
+.tc-bar-label { color: var(--text-2); }
 .tc-points { margin: 0; padding-left: 1.2rem; font-size: .95rem; }
-.tc-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: .7rem; }
+.tc-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr)); gap: .7rem; }
 .tc-result { min-width: 0; }
 .tc-content { margin: .45rem 0 0; padding: .55rem .7rem; max-height: 15rem; overflow: auto; font: .85rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-code); border: 1px solid var(--border); border-radius: 8px; }
 .tc-idle { margin: 0; font-size: .95rem; color: var(--text-2); }

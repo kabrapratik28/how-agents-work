@@ -170,6 +170,21 @@ export default function (sims, assert) {
   const follow = callsIn(lm).find((c) => c.id === 'call_2');
   assert.equal(follow.arguments.path, big.artifact, 'the next call uses the reference');
   assert.match(resultFor(lm, 'call_2').content, /test_login_expired_token/);
+  // The marker says "read a line range", so read_file must support one: a bounded read of the saved log.
+  const rp = s.tools.read_file.parameters.properties;
+  assert.ok(rp.offset && rp.limit, 'read_file takes an offset and a limit');
+  assert.deepEqual(s.validate('read_file', { path: 'a.py', offset: 10, limit: 20 }), []);
+  assert.ok(s.validate('read_file', { path: 'a.py', offset: 0 }).length, 'offset starts at line 1');
+  assert.ok(s.validate('read_file', { path: 'a.py', limit: 500 }).length, 'limit is capped');
+  const read = callsIn(lm).find((c) => c.id === 'call_3');
+  assert.equal(read.name, 'read_file');
+  assert.equal(read.arguments.path, big.artifact, 'the bounded read targets the saved log');
+  assert.ok(resultFor(lm, 'call_2').content.includes(':' + read.arguments.offset + ': '), 'it starts at a line the search found');
+  const partMsg = resultFor(lm, 'call_3');
+  const part = partMsg.content;
+  assert.ok(!partMsg.truncated && part.startsWith('Lines ' + read.arguments.offset + '-'), 'the result names the lines it holds');
+  assert.match(part, /^E\s+assert 200 == 401$/m, 'it returns the traceback line from the failure details');
+  assert.ok(!/test_api_001/.test(part) && part.split('\n').length <= read.arguments.limit + 1, 'and nothing past the limit');
   const note = l.find((st) => st.kind === 'note');
   assert.ok(note && note.view.invalid === true, 'the structured-output step shows a broken cut');
   assert.equal(JSON.parse(JSON.stringify(note.alt.json)).truncated, true, 'and a valid structured limit');

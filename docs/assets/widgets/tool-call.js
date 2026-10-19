@@ -31,7 +31,16 @@
     read_file: {
       description: 'Read a text file inside the workspace.',
       effect: 'read-only',
-      parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative to the workspace root' } }, required: ['path'], additionalProperties: false }
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Relative to the workspace root' },
+          offset: { type: 'integer', minimum: 1, default: 1, description: 'First line to read' },
+          limit: { type: 'integer', minimum: 1, maximum: 200, default: 100, description: 'How many lines to read' }
+        },
+        required: ['path'],
+        additionalProperties: false
+      }
     },
     run_command: {
       description: 'Run a shell command in the sandbox, from the workspace root. Returns the exit code and output.',
@@ -65,6 +74,7 @@
   })();
   function failed(t) { return t.outcome === 'failed'; }
 
+  var FAIL_HEADER = '____________________ test_login_expired_token ____________________';
   function suiteLog() {
     var bad = SUITE.filter(failed);
     var lines = ['============================= test session starts ==============================', 'collected ' + SUITE.length + ' items', ''];
@@ -75,7 +85,7 @@
       lines.push(left + ' '.repeat(Math.max(1, 80 - left.length - right.length)) + right);
     });
     lines.push('', '=================================== FAILURES ===================================');
-    lines.push('____________________ test_login_expired_token ____________________', '',
+    lines.push(FAIL_HEADER, '',
       'client = <TestClient app=web>, token = <Token user=7 expires_at=09:59>', 'now = datetime(2026, 10, 19, 10, 0)', '',
       '>       assert client.get("/me", token=token).status_code == 401', 'E       assert 200 == 401', '',
       'tests/test_auth.py:3: AssertionError');
@@ -90,6 +100,7 @@
   }
   var COMMANDS = { 'pytest -v': 'exit code 1\n' + suiteLog() };
   var LOG = COMMANDS['pytest -v'];
+  var FAIL_LINE = LOG.split('\n').indexOf(FAIL_HEADER) + 1;
 
   function clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
   function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
@@ -112,7 +123,8 @@
       var hint = p.default != null ? ' Leave it out for the default (' + p.default + ').' : '';
       if (p.type === 'string' && typeof v !== 'string') errs.push({ field: k, message: k + ' must be a string (got ' + JSON.stringify(v) + ')' });
       if (p.type === 'integer' && !(typeof v === 'number' && v % 1 === 0 && !(v < p.minimum) && !(v > p.maximum))) {
-        errs.push({ field: k, message: k + ' must be an integer from ' + p.minimum + ' to ' + p.maximum + ' (got ' + JSON.stringify(v) + ').' + hint });
+        var range = p.maximum != null ? 'from ' + p.minimum + ' to ' + p.maximum : 'of at least ' + p.minimum;
+        errs.push({ field: k, message: k + ' must be an integer ' + range + ' (got ' + JSON.stringify(v) + ').' + hint });
       }
     });
     return errs;
@@ -162,7 +174,16 @@
       var abs = resolvePath(a.path);
       if (!inside(abs) && OUTSIDE[abs] != null) return OUTSIDE[abs];
       var f = abs.slice(ROOT.length + 1);
-      if (files[f] != null) return files[f];
+      if (files[f] != null) {
+        // A bounded read: a whole small file as is, otherwise the requested lines with a header that says which.
+        var lines = files[f].split('\n');
+        var from = a.offset || 1;
+        var n = a.limit || 100;
+        if (from === 1 && lines.length <= n) return files[f];
+        if (from > lines.length) throw new Error('offset ' + from + ' is past the end of ' + a.path + ' (' + lines.length + ' lines).');
+        var part = lines.slice(from - 1, from - 1 + n);
+        return 'Lines ' + from + '-' + (from - 1 + part.length) + ' of ' + fmt(lines.length) + ':\n' + part.join('\n');
+      }
       var dir = f.split('/').slice(0, -1).join('/');
       var stem = f.split('/').pop().slice(0, 5);
       var similar = Object.keys(files).filter(function (k) {
@@ -309,7 +330,11 @@
         { do: 'request', calls: [{ name: 'search_files', args: { query: 'test_login_expired_token', path: OUT_DIR + 'call_1.log' }, ms: 9 }], title: 'The model follows the pointer',
           say: 'The model searches the saved log for the failing test, as call_2, instead of running the whole suite again.' },
         { do: 'pass', title: 'The search runs',
-          say: 'call_2 returns the matching lines with line numbers, so the model can read just that part of the log next.' },
+          say: 'call_2 returns the matching lines with their line numbers, so the model now knows where the failure details start.' },
+        { do: 'request', calls: [{ name: 'read_file', args: { path: OUT_DIR + 'call_1.log', offset: FAIL_LINE, limit: 9 }, ms: 4 }], title: 'The model reads just that part',
+          say: 'The details start at line ' + FAIL_LINE + ', so the model asks for nine lines from there, as call_3.' },
+        { do: 'pass', title: 'The short read runs',
+          say: 'call_3 returns only those nine lines, including the assertion that fails. The rest of the log never entered the context.' },
         { do: 'note', title: 'Cutting JSON breaks it',
           say: 'Suppose the tool had returned JSON instead. Cutting it at a character limit leaves invalid JSON, so a better limit drops whole items and says how many it dropped.',
           points: ['Keep the top-level shape.', 'Drop whole items, not characters.', 'Say how many items were dropped.', 'Point to the full output.'] }

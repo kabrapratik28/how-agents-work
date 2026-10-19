@@ -14,7 +14,7 @@
   <header class="chapter-head">
     <p class="kicker">Chapter 3 · The core loop</p>
     <h1>State</h1>
-    <p class="lede">Everything an agent knows lives outside the model: in your runtime, in saved files, and in the world it works on. Each model call sees only a slice of it.</p>
+    <p class="lede">An agent's task state lives outside the model: in your runtime, in saved files, and in the world it works on. Each model call sees only a slice of it.</p>
     <div class="loop-map" data-focus="state update"></div>
   </header>
 
@@ -27,7 +27,7 @@
         <thead><tr><th scope="col">Kind</th><th scope="col">What it is</th><th scope="col">Held by</th><th scope="col">Lasts</th><th scope="col">Example</th></tr></thead>
         <tbody>
           <tr><th scope="row">Conversation</th><td>The log of messages</td><td>The runtime, sometimes the provider</td><td>The session</td><td>The request, tool calls, tool results</td></tr>
-          <tr><th scope="row">Context</th><td>What one model call receives</td><td>No one: it is rebuilt</td><td>One call</td><td>Instructions, tools, recent messages</td></tr>
+          <tr><th scope="row">Context</th><td>What one model call receives</td><td>The runtime, while it builds and sends the call</td><td>One call (a trace may keep a copy)</td><td>Instructions, tools, recent messages</td></tr>
           <tr><th scope="row">Runtime state</th><td>Variables the loop tracks</td><td>The runtime process</td><td>The run</td><td><code>step = 7</code>, files changed</td></tr>
           <tr><th scope="row">World state</th><td>Files, databases, services</td><td>The world</td><td>Its own lifetime</td><td><code>auth/session.py</code> on disk</td></tr>
           <tr><th scope="row">Persistent state</th><td>Whatever survives a restart</td><td>Files, databases, stores</td><td>Across runs</td><td>A checkpoint after step 7</td></tr>
@@ -195,23 +195,23 @@ state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre
         <li><strong>Hermes</strong> (v0.22.2) removed its "context pressure" warnings because they made models give up early on complex tasks.</li>
       </ul>
     </aside>
-    <p>Sort these items into the five kinds of state:</p>
+    <p>The kinds overlap. A checkpoint is a saved copy of runtime state, and files on disk survive restarts too. So for each item below, pick the role it plays here:</p>
     <div class="quiz-group">
       <p class="quiz-score" aria-live="polite">Pick an answer for each card.</p>
       <div class="quiz sorter">
         <p class="q">The model's input on step 7</p>
         <ol class="options"><li>Conversation</li><li data-correct>Context</li><li>Runtime</li><li>World</li><li>Persistent</li></ol>
-        <details class="answer"><summary>Why</summary><p>Context. It existed only for that call: the runtime built it, sent it, and discarded it.</p></details>
+        <details class="answer"><summary>Why</summary><p>Context. The runtime built it for that one call. A trace may save a copy, but its role here is the input to that call.</p></details>
       </div>
       <div class="quiz sorter">
         <p class="q">The step counter</p>
         <ol class="options"><li>Conversation</li><li>Context</li><li data-correct>Runtime</li><li>World</li><li>Persistent</li></ol>
-        <details class="answer"><summary>Why</summary><p>Runtime state. The loop needs it to enforce the step limit.</p></details>
+        <details class="answer"><summary>Why</summary><p>Runtime state. The loop uses it to enforce the step limit. A checkpoint can save a copy, which is then persistent state.</p></details>
       </div>
       <div class="quiz sorter">
-        <p class="q">The files on disk</p>
+        <p class="q">A file a teammate just changed</p>
         <ol class="options"><li>Conversation</li><li>Context</li><li>Runtime</li><li data-correct>World</li><li>Persistent</li></ol>
-        <details class="answer"><summary>Why</summary><p>World state. Any copy the agent holds is an observation that can go stale.</p></details>
+        <details class="answer"><summary>Why</summary><p>World state. The file also survives restarts, but its role here is the outside world: other people change it, so any copy the agent holds can go stale.</p></details>
       </div>
       <div class="quiz sorter">
         <p class="q">The result of <code>call_3</code></p>
