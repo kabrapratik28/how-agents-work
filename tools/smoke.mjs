@@ -106,6 +106,18 @@ async function interact(page, name) {
     await page.keyboard.press('ArrowRight');
     if (!/Step 2 of/.test((await st.locator('.w-counter').textContent()) || '')) fail(name, `stepper ${s} ignores ArrowRight`);
   }
+  // Every tab in every widget can be clicked without errors (errors are caught by the page listeners).
+  const tabs = page.locator('[data-widget] .w-tab');
+  const nTabs = Math.min(await tabs.count(), 40);
+  for (let t = 0; t < nTabs; t++) { if (await tabs.nth(t).isVisible()) await tabs.nth(t).click(); }
+  // Comparison table: columns toggle, and the last visible column cannot be hidden.
+  const boxes = page.locator('[data-widget="comparison"] input[type="checkbox"]');
+  const nBoxes = await boxes.count();
+  if (nBoxes) {
+    for (let b = 0; b < nBoxes; b++) if (await boxes.nth(b).isChecked()) await boxes.nth(b).click();
+    const still = await boxes.evaluateAll((els) => els.filter((e) => e.checked).length);
+    if (still < 1) fail(name, 'comparison let every column be hidden');
+  }
   // Quiz: first option of the first quiz gets checked.
   const quiz = page.locator('.quiz.js').first();
   if (await quiz.count()) {
@@ -136,6 +148,17 @@ async function main() {
     }
     await pg.close();
     await ctx.close();
+
+    // Narrow phones: no page scrolls sideways at 360px (wide tables and code scroll inside their own boxes).
+    const narrow = await browser.newContext({ viewport: { width: 360, height: 760 }, isMobile: true });
+    const np = await narrow.newPage();
+    for (const p of pages) {
+      await np.goto(base + p);
+      await np.waitForTimeout(80);
+      const w = await np.evaluate(() => document.documentElement.scrollWidth);
+      if (w > 362) fail(p, `scrolls sideways at 360px (page width ${w}px)`);
+    }
+    await narrow.close();
 
     // Mobile menu: closed drawer is skipped by Tab, open drawer holds focus, Escape returns focus.
     const mob = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true });
@@ -174,7 +197,7 @@ async function main() {
       const modes = [
         { tag: 'desktop', viewport: { width: 1280, height: 900 }, colorScheme: 'light' },
         { tag: 'dark', viewport: { width: 1280, height: 900 }, colorScheme: 'dark' },
-        { tag: 'mobile', viewport: { width: 390, height: 844 }, colorScheme: 'light', isMobile: true },
+        { tag: 'mobile', viewport: { width: 360, height: 780 }, colorScheme: 'light', isMobile: true },
       ];
       for (const m of modes) {
         const c = await browser.newContext({ viewport: m.viewport, colorScheme: m.colorScheme, isMobile: !!m.isMobile, deviceScaleFactor: 1 });

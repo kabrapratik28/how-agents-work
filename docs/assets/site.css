@@ -221,7 +221,7 @@ h4 { font-size: 1rem; margin: 1.5rem 0 .4rem; }
 section > h2:first-child { padding-top: .2rem; }
 
 code {
-  font-family: var(--mono); font-size: .86em;
+  font-family: var(--mono); font-size: max(.86em, 13px);
   background: var(--bg-sunk); border: 1px solid var(--border);
   padding: .06em .32em; border-radius: 4px;
   overflow-wrap: anywhere;
