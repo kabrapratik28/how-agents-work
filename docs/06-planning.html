@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planning and reflection · How AI Agents Work</title>
+<meta name="description" content="What it means when an agent plans or reflects, the five ways to keep a plan, when planning pays off, and why reviews need outside evidence.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 6 · Capabilities built on the loop</p>
+    <h1>Planning and reflection</h1>
+    <p class="lede">Plans and reviews can make an agent more reliable, but each one costs extra calls, so use them where they pay off.</p>
+    <div class="loop-map" data-focus="decide state"></div>
+  </header>
+
+  <section id="what-planning-means">
+    <h2>What "the agent plans" means</h2>
+    <p>Ask Patch to fix the failing auth test, and it may start with a plan. The plan says to reproduce the failure, find the cause, fix it, and run the tests. When people say "the agent plans", they mean a written list like this, which later steps can use.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Planning = generating and maintaining an explicit representation of intended future actions.</p>
+    </aside>
+    <p>A useful plan is kept up to date as steps finish and facts change. A plan that is never updated is only a guess. Many models also reason before they reply, and that reasoning can look like a plan. But it stays inside one call. Depending on the provider, you see it, a summary of it, or nothing, and your code cannot keep it or update it.</p>
+    <p>The designs below keep the plan outside the model, from step to step. There are five common ones, and they differ in where the plan lives:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Five ways to plan, from none to a tree</caption>
+        <thead><tr><th scope="col">Design</th><th scope="col">Where the plan lives</th><th scope="col">Who updates it</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">No explicit plan</th><td>Nowhere. Only the history of past steps.</td><td>Nobody</td></tr>
+          <tr><th scope="row">Plan in plain text</th><td>A message in the conversation</td><td>The model, by writing a new plan</td></tr>
+          <tr><th scope="row">Todo list</th><td>Data in your code's state</td><td>The model, through a tool</td></tr>
+          <tr><th scope="row">Planner and executor</th><td>The output of a separate planner call</td><td>The planner, when a step fails</td></tr>
+          <tr><th scope="row">Hierarchy</th><td>A tree of goals and subgoals</td><td>Each level, for its own branch</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="no-planning">
+    <h2>No explicit planning</h2>
+    <p>In the simplest design, nobody keeps a plan. On each call the model reads the request and the history and picks the next action, as in the loop from <a href="01-agent-loop.html#simple-loop">chapter 1</a>:</p>
+    <ol class="trace">
+      <li><span class="badge user">User</span> Fix the failing auth test.</li>
+      <li><span class="badge model">Model</span> <code>run_command("pytest tests/test_auth.py")</code></li>
+      <li><span class="badge tool">Tool</span> 1 failed: <code>test_login_expired_token</code></li>
+      <li><span class="badge model">Model</span> <code>read_file("auth/session.py")</code></li>
+      <li><span class="badge model">Model</span> <code>edit_file("auth/session.py", ...)</code>, then runs the tests again</li>
+    </ol>
+    <p>Nothing records an intention beyond the next step, because the history only holds the past. For short tasks this is often the best choice. It also suits exploratory work such as debugging. There each step depends on what the last one revealed, so a plan made up front goes stale quickly.</p>
+    <p>On long tasks it tends to struggle. Subgoals get lost when old history is trimmed, and the model can wander or stop with half the work undone.</p>
+  </section>
+
+  <section id="natural-language-plan">
+    <h2>A plan in plain text</h2>
+    <p>One step up, the model writes its plan as text in a reply before it acts:</p>
+<pre><code>Plan:
+1. Inspect config
+2. Find authentication logic
+3. Reproduce bug
+4. Patch
+5. Test</code></pre>
+    <p>This costs almost nothing, and it often helps. Writing the steps commits the model to an order, and later calls see the plan in the history. A person can also read what the agent meant to do.</p>
+    <p>But the plan is only text. Nothing tracks which steps are done. As the run grows, the plan sinks deeper into the history, and compaction can squeeze it into a summary. When the model changes course, it writes a second plan, and only the order of the messages says which plan is current.</p>
+  </section>
+
+  <section id="todo-state">
+    <h2>A todo list in your code's state</h2>
+    <p>Here your code keeps the plan as data, and the model changes it through a tool. Watch one list change during a run. The first version assumes the tests can run as they are:</p>
+<pre><code># step 1: the model calls todo_write with its first plan
+[{"task": "Reproduce the failing test", "status": "in_progress"},
+ {"task": "Find and fix the cause",     "status": "pending"},
+ {"task": "Run the auth tests",         "status": "pending"}]
+
+# step 2: pytest cannot reach PostgreSQL, so the assumption was wrong
+[{"task": "Start the test database",    "status": "in_progress"},  # new
+ {"task": "Reproduce the failing test", "status": "pending"},
+ {"task": "Find and fix the cause",     "status": "pending"},
+ {"task": "Run the auth tests",         "status": "pending"}]
+
+# step 7: database up, failure reproduced, grace period removed
+[{"task": "Start the test database",    "status": "completed"},
+ {"task": "Reproduce the failing test", "status": "completed"},
+ {"task": "Find and fix the cause",     "status": "completed"},
+ {"task": "Run the auth tests",         "status": "in_progress"}]</code></pre>
+    <p>At step 2 the tests could not run, because no database was running. So the model added an item to the plan, instead of only changing its next action. Because the plan is data, a person or a check can see the change: one new item, and nothing silently dropped.</p>
+    <h3>How the plan reaches the model</h3>
+    <p>Keeping the plan in your code's state does not put it in front of the model. That takes a choice about the context, and there are three common options:</p>
+    <ul>
+      <li><strong>History only.</strong> The model sees the plan through its own earlier tool calls. This is simple, but old calls can be trimmed or summarized away. Deep Agents (0.7.28) works this way.</li>
+      <li><strong>Every call.</strong> Your code adds the full list to each context, for example right before the newest message. The plan never scrolls away, but it costs tokens on every call.</li>
+      <li><strong>A short view.</strong> Your code adds only the current item, the next two, and a count. It shows the full list after compaction, or when the model asks.</li>
+    </ul>
+<pre><code>def render_plan(todos):
+    done = [t for t in todos if t["status"] == "completed"]
+    now = [t for t in todos if t["status"] == "in_progress"]
+    upcoming = [t for t in todos if t["status"] == "pending"][:2]
+    lines = [f"Plan: {len(done)} of {len(todos)} done."]
+    lines += ["NOW:  " + t["task"] for t in now]
+    lines += ["NEXT: " + t["task"] for t in upcoming]
+    return "\n".join(lines)</code></pre>
+    <p>Which option is best depends on how long tasks run, how big the context window is, and how often the plan changes. So start with the cheapest one and measure.</p>
+    <h3>Plan approval</h3>
+    <p>A written plan also gives a person something to approve. For a large or risky change, your code can pause after the plan is written and before the first edit. The person approves the plan, edits it, or rejects it, as with the approval gates in <a href="11-human-in-the-loop.html">chapter 11</a>. But approving a plan does not approve every action in it. "Update the schema" says nothing about the exact migration, so keep a separate gate on dangerous steps.</p>
+    <p>How a planning mode is enforced matters too. Hermes (v0.22.2) offers a <code>/plan</code> mode that only asks the model, in its prompt, not to edit files. An example plan mode for Pi (1.3.0) instead turns off the edit and write tools. Only the second one prevents edits.</p>
+  </section>
+
+  <section id="planner-executor">
+    <h2>Planner and executor</h2>
+    <p>Here two parts split the work. A planner call turns the goal into steps. An executor carries out one step at a time, often as its own loop with tools. When a step fails, the planner revises the rest of the plan:</p>
+<pre><code>def plan_and_execute(goal, replans_left=3):
+    plan = planner(goal)                          # one model call: a list of steps
+    done = []
+    while plan:
+        step = plan.pop(0)
+        result = executor(step, notes=done)       # a loop with tools, or one call
+        done.append((step, result))
+        if result.failed:
+            if replans_left == 0:
+                return "stopped: too many replans"
+            replans_left -= 1
+            plan = planner(goal, done=done, failed=step)   # revise what is left
+    return summarize(done)</code></pre>
+    <p>With this split, the planner can be a stronger model and the executor a cheaper one. The executor's context stays small, because it holds only one step and what that step needs. The plan also sits between them, where you can log it, show it, or approve it.</p>
+    <p>A plan fixed in advance can also limit prompt injection. If the plan comes only from the trusted request, text the executor reads later cannot change which steps run, though it can still affect what a step does. Security researchers call this the Plan-Then-Execute pattern (<a href="10-sandboxing.html">chapter 10</a> covers prompt injection).</p>
+    <p>It also has a cost, because information must cross the boundary. The executor may discover something that changes the whole plan but report only "step failed", so the planner revises from a summary. Each replan adds calls, and a weak planner can loop by proposing the same failing step again. <a href="14-architectures.html#planner-executor">Chapter 14</a> compares this design with other architectures.</p>
+  </section>
+
+  <section id="hierarchical">
+    <h2>Hierarchical planning</h2>
+    <figure>
+<pre class="diagram" aria-label="A goal tree: ship password reset splits into an API endpoint with two tasks, an email template, a front-end form, and tests. Each branch can get its own executor.">
+Goal: ship password reset
+├── API endpoint                 <span class="c-runtime">one executor per branch</span>
+│   ├── reset token: single-use, 30 minutes
+│   └── POST /password-reset, rate limited
+├── Email template
+├── Front-end form (TypeScript)
+└── Tests
+</pre>
+    </figure>
+    <p>Large goals split into subgoals and tasks, and hierarchical planning keeps that tree written down. Each level plans only its own part, and the top level picks the branches and their order. Each branch can get its own executor, often a subagent with a fresh context. The results flow back up, and the parent checks them against the goal.</p>
+    <p>The tree helps when branches are independent and large, but it hurts when they are coupled. For example, the API and the form must agree on one request format, and two branches that decide it separately can disagree. Every level also adds calls, summaries, and chances to lose detail. <a href="07-subagents.html">Chapter 7</a> covers handing work to subagents.</p>
+  </section>
+
+  <section id="when-it-helps">
+    <h2>When planning helps, and when it adds overhead</h2>
+    <p>A one-line typo fix gains nothing from a plan. A change that touches the API, the email template, the form, and the tests probably does. The table shows where planning tends to pay off:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Where an explicit plan tends to pay off</caption>
+        <thead><tr><th scope="col">Tends to help when</th><th scope="col">Tends to add overhead when</th></tr></thead>
+        <tbody>
+          <tr><td>The task is long, and its steps depend on each other</td><td>The task takes a handful of steps</td></tr>
+          <tr><td>Work must survive compaction, a restart, or a handoff</td><td>Each step depends on what the last one revealed, as in debugging</td></tr>
+          <tr><td>A person should approve the approach before anything changes</td><td>The plan would only repeat the request</td></tr>
+          <tr><td>Several workers need one shared list of what is left</td><td>Keeping the plan current costs more calls than the work</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Planning also has a cost. Each plan update is a tool call that uses tokens. A detailed plan written before the agent looks at anything is mostly guesses. The model may keep following it after the evidence says otherwise.</p>
+    <p>The trade can be large in both directions. In one Anthropic test of building a retro game maker, a single agent took 20 minutes and $9, and its game was broken. A harness with separate planner, builder, and evaluator agents took 6 hours and $200, and its game was playable. Results from real systems are mixed:</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Deep Agents</strong> made its todo tool optional in version 0.7.0. LangChain tested three models with and without it. It found no statistically significant gain in accuracy, and cost rose for two of the three.</li>
+        <li><strong>Pi</strong>'s author, Mario Zechner, wrote that "to-do lists generally confuse models more than they help". That is a design opinion, not a benchmark.</li>
+        <li><strong>Hermes</strong> keeps a todo tool, but in v0.22.2 the model must find it through tool search before it can use it.</li>
+      </ul>
+    </aside>
+    <p>So treat a plan as a feature with a cost, and test it. Run the same tasks with and without it, several times each, and compare success, cost, and the number of calls. <a href="16-evaluation.html">Chapter 16</a> shows how to run such tests, and <a href="18-model-vs-architecture.html#better-planning">chapter 18</a> shows how to tell whether the plan caused a gain.</p>
+  </section>
+
+  <section id="reflection">
+    <h2>Reflection</h2>
+    <p>Patch fixes the auth bug, the tests pass, and then a second model call reviews the change before Patch reports success. That review is a form of reflection. The usual way to build it is one more model call that reads earlier work. That work can be a draft, a diff, or the record of a run, and the call returns a critique, a revision, or a verdict.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Reflection = another model call over earlier state or output, whose result feeds a revision or a decision.</p>
+    </aside>
+<pre><code>review = model([
+    system("You review a coding agent's change. List concrete problems only."),
+    user(f"Task: {task}\nDiff:\n{diff}\nTest output:\n{test_output}"),
+])
+if review.problems:
+    messages.append(user("The review found problems:\n" + review.text))
+    # the loop continues, and the agent revises with the review in its context</code></pre>
+    <h3>Self-critique without evidence</h3>
+    <p>The weak form asks the same model, with the same information, "Is this right? Improve it." No new information enters, so the reviewer shares the blind spots that produced the work. It can approve a wrong answer with confidence. It can also change a right answer into a wrong one, because the question suggests that something is wrong.</p>
+    <h3>Revision from evidence</h3>
+    <p>The strong form adds a signal from outside the model, such as test results, a type checker, a failed command, or the requirements. "The test still fails with <code>assert 200 == 401</code>" tells the model far more than "please double-check". But evidence can mislead too:</p>
+    <ol class="trace">
+      <li><span class="badge model">Model</span> <code>edit_file("tests/test_auth.py", old="== 401", new="== 200")</code></li>
+      <li><span class="badge tool">Tool</span> <code>pytest</code>: 12 passed</li>
+      <li><span class="badge model">Review</span> "All tests pass. The fix looks correct."</li>
+      <li><span class="badge runtime">Your code</span> A test file changed in the same run as the fix, so it asks a person.</li>
+    </ol>
+    <p>The tests pass because the edit changed the test, not the code. So a good review asks what the evidence proves. Did any test change, and does a test still check that an expired token gets a 401? Give the reviewer the test changes along with the test output. Better still, add a rule to your code: a fix may not edit the test that defines success unless a person allows it.</p>
+    <h3>Costs and limits</h3>
+    <ul>
+      <li><strong>Cost:</strong> every review round is at least one more model call, and its context includes the work under review.</li>
+      <li><strong>Shared mistakes:</strong> a model reviewing its own work tends to repeat its own errors. Anthropic engineers report that agents "reliably skew positive when grading their own work", and that a separate, skeptical evaluator is easier to tune.</li>
+      <li><strong>No guaranteed gain:</strong> a revision can be worse than the original, so keep the original and compare.</li>
+      <li><strong>Stopping:</strong> "revise until the reviewer is satisfied" needs a cap, because the reviewer may never be satisfied, or may be satisfied too soon.</li>
+    </ul>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>Reflection is like code review. Self-critique is reviewing your own pull request right after writing it, and revising from evidence is fixing what CI reported.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a person who reviews their own work later has some distance from it. A model that reviews its output in the same context has none. CI also checks only what the tests check, so a weakened test passes CI too.</p>
+    </aside>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Deep Agents</strong> (0.7.28) has a beta rubric middleware. When the model is about to stop, a grader agent scores the run against a rubric and sends feedback. This repeats until the grader is satisfied, the run fails, or a round limit is reached.</li>
+        <li><strong>Hermes</strong> (v0.22.2) offers <code>/goal</code>. After each turn, a separate judge call answers done, continue, or blocked, for up to 20 turns by default. Optional completion contracts and shell-command checks make the judge require evidence.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch gets a plan and a review</h2>
+    <p>Patch version 6 gets a <code>todo_write</code> tool that replaces the list in its state. Your code shows the model a short view of the list on every call. A plan that touches more than five files or includes a migration needs a person's approval before the first edit. Before Patch reports success, a review call checks the diff against the test results.</p>
+<pre><code>+ tools += [todo_write]                                  # replaces state["todos"]
++ context.add_before_last(render_plan(state["todos"]))   # short view on each call
++ if needs_plan_approval(state["todos"]): wait_for_human("approve the plan")
++ if model_says_done and tests_still_pass(state):
++     if tests_edited(state): ask_human("a test changed in this run")
++     elif review(diff(state), state["last_test"]).ok: return "done"</code></pre>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Following a stale plan</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The plan was written before the agent knew much. New evidence contradicts it, but the model keeps ticking items off.</dd>
+        <dt>How to spot it</dt><dd>Look for items marked done without the evidence they promised.</dd>
+        <dt>What to do</dt><dd>Tie each item to evidence, replan when an assumption fails, and keep early plans short.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>A review that approves everything</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The reviewer is the same model with the same context, so it shares the author's blind spots.</dd>
+        <dt>How to spot it</dt><dd>Reviews approve almost every change, including changes that fail later.</dd>
+        <dt>What to do</dt><dd>Give the reviewer outside evidence, a different prompt or model, and checks in code.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>A gamed success check</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The agent changes the test, or the check, instead of fixing the code.</dd>
+        <dt>How to spot it</dt><dd>Look for diffs that change tests in the same run as the fix.</dd>
+        <dt>What to do</dt><dd>Protect the success criteria. Test edits need approval, and your code checks against the original tests.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Whether a kind of task needs a plan at all, based on measured results.</li>
+          <li>How the plan reaches the model, and which plans need a person's approval.</li>
+          <li>What evidence a review must see, and which success criteria the agent may never change.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The todo tool, its schema, and the code that updates state.</li>
+          <li>Rendering the plan into the context, and the approval screen.</li>
+          <li>The review call, and counting its outcomes for evaluation.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">What is planning, mechanically? (Q10)</p>
+      <details class="answer"><summary>Answer</summary><p>Writing down and maintaining a list of intended actions. It can be text in the conversation, a todo list in your code's state, or a planner's output that an executor follows. It is updated as steps finish and assumptions fail.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">What is reflection, mechanically? (Q11)</p>
+      <details class="answer"><summary>Answer</summary><p>Another model call that reads earlier work, such as a draft or a diff, and returns a critique or a verdict. It helps most when it brings in outside evidence. It costs extra calls, can repeat the original mistakes, and does not guarantee a better result.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">A review call approves Patch's fix because the tests pass. What should it check first?</p>
+      <ol class="options">
+        <li>Whether the code style is consistent</li>
+        <li data-correct>Whether the run changed the tests that define success</li>
+        <li>Whether the model sounded confident</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>A passing test proves something only if it still tests the bug, so edited tests come first.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Use a plan where it pays off, on long, dependent, or approved work, and measure what it costs.</li>
+      <li>Decide separately how the plan reaches the model: through the history, on every call, or as a short view.</li>
+      <li>Reflection works when it brings in outside evidence, and even that evidence needs checking.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://arxiv.org/abs/2303.11366">Reflexion: Language Agents with Verbal Reinforcement Learning</a> (2023). An agent writes lessons from feedback into memory and uses them on its next try.</li>
+      <li><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">Harness design for long-running application development</a> (Anthropic, 2026). Separate planner, builder, and evaluator agents, and what they cost.</li>
+      <li><a href="https://arxiv.org/abs/2506.08837">Design Patterns for Securing LLM Agents against Prompt Injections</a> (2025). Plan-Then-Execute and five other patterns.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>
