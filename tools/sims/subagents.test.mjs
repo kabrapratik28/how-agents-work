@@ -74,6 +74,11 @@ export default function (sims, assert) {
       else assert.equal(n, 1, tag + ': one result for ' + id);
     }
     assert.ok(r.contracts.length === 3 && r.contracts.every((c) => c.objective && c.tools.length && c.output && c.budget && c.owns && c.cancel), tag + ': contracts');
+    // The budget in the contract is enforced, not just printed.
+    for (const run of childRuns) {
+      assert.ok(run.calls.length <= s.budget.steps, tag + ': a child stays within its step budget');
+      assert.ok(run.end - run.start <= s.budget.seconds, tag + ': a child stays within its time budget');
+    }
     assert.ok(r.events.length >= 5 && r.outcome && r.outcome.status, tag + ': events and outcome');
   }
 
@@ -99,6 +104,14 @@ export default function (sims, assert) {
   assert.deepEqual(owned.files['app/settings.py'].writes.map((w) => w.by), ['parent'], 'only the parent writes the shared file');
   assert.ok(owned.events.some((e) => /refuse/i.test(e.text)), 'the runtime refuses writes outside owned paths');
 
+  // A tight step budget cuts a long child short, and the parent gets a note instead of a report.
+  const tight = s.run({ scenario: 'coupled', budgetSteps: 10 });
+  const cut = tight.agents.find((a) => a.id === 'rabbitmq').runs[0];
+  assert.equal(cut.status, 'budget', 'the runtime stops a child that runs out of steps');
+  assert.ok(cut.calls.length <= 10, 'no call past the budget');
+  assert.ok(cut.returned && /budget/i.test(cut.reportText), 'the parent hears that the budget ran out');
+  assert.match(tight.contracts[1].budget, /^10 steps/, 'the contract shows the enforced limit');
+
   // A failed child: decide what happens next.
   const f0 = s.run({ scenario: 'failure' });
   assert.equal(f0.outcome.status, 'waiting');
@@ -112,6 +125,13 @@ export default function (sims, assert) {
   assert.equal(partial.outcome.status, 'partial');
   assert.ok(ask.timing.humanWait, 'asking the user blocks on a person');
   assert.equal(retry.outcome.status, 'ok');
+  // The log is causal: the pause and the decision come before the retry they cause.
+  const iPause = ask.events.findIndex((e) => e.actor === 'runtime' && /asks you/i.test(e.text));
+  const iUser = ask.events.findIndex((e) => e.actor === 'human');
+  const iRetry = ask.events.findIndex((e) => /\(retry\)/.test(e.label));
+  assert.ok(iPause !== -1 && iPause < iUser && iUser < iRetry, 'pause, then decision, then retry');
+  const iRule = retry.events.findIndex((e) => /retry once/i.test(e.text));
+  assert.ok(iRule !== -1 && iRule < retry.events.findIndex((e) => /\(retry\)/.test(e.label)), 'the retry rule is logged before the retry runs');
 
   // Disagreement: resolve with evidence, not confidence or votes.
   const d0 = s.run({ scenario: 'disagree' });

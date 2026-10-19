@@ -21,8 +21,8 @@
 
   <section id="first-principles">
     <h2>A subagent is another loop</h2>
-    <p>Suppose Patch needs every place in the code that checks whether a login token has expired. Finding them means searching and reading about thirty files, but the answer is three lines. If Patch searches itself, all thirty files land in its own context and stay there.</p>
-    <p>Instead, Patch can call a tool named <code>delegate</code> with a short request. Behind that tool, your code starts a second agent loop with its own instructions, tools, and an empty history. When that loop stops, your code returns its final message to Patch as the tool result.</p>
+    <p>Suppose Patch needs every place in the code that checks whether a login token has expired. Finding them means searching and reading about thirty files, but the answer is three lines. If Patch searches itself, all thirty files land in its own context. In a simple loop they stay there until something compacts them (<a href="04-context.html#compaction">chapter 4</a>).</p>
+    <p>Instead, Patch can call a tool named <code>delegate</code> with a short request. Behind that tool, your code starts a second agent loop. In the simplest design, that loop gets its own instructions, its own tools, and an empty history. When it stops, your code returns its final message to Patch as the tool result.</p>
 <figure>
 <pre class="diagram" aria-label="The main agent delegates to a second agent loop, which works on its own and returns a short result">
 <span class="c-model">Main agent</span>
@@ -51,14 +51,14 @@
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
       <p>A subagent is like a spawned worker with its own context, such as a child process. You pass it arguments, it works in its own memory, and you get a return value back.</p>
-      <p class="breaks"><strong>Where it breaks:</strong> a process gets its arguments exactly, but a subagent gets a paragraph of text that it can misread. Its return value is a summary written by a model, so it can leave things out or claim a success that never happened. And a separate context is not a separate machine, because the child can still change files the parent depends on.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a process gets its arguments exactly, but a subagent gets a paragraph of text that it can misread. Its return value is a summary written by a model. So it can leave things out, or claim a success that never happened. And the child can still change files the parent depends on.</p>
     </aside>
   </section>
 
   <section id="what-varies">
     <h2>What a subagent can change</h2>
     <p>A research agent might start one child per source, each with the same instructions and tools as the parent and a different brief. A coding agent might start a reviewer with its own prompt, read-only tools, and a cheaper model.</p>
-    <p>So "subagent" names a set of choices. The only fixed part is a separate loop with its own context, and everything else can match the parent or differ.</p>
+    <p>So "subagent" names a set of choices, and only the separate loop is fixed.</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>What a subagent can change</caption>
@@ -74,12 +74,11 @@
         </tbody>
       </table>
     </div>
-    <p>A single extra model call is not a subagent, because it runs once and returns. Examples are a summary, or the reflection call in <a href="06-planning.html#reflection">chapter 6</a>. A subagent loops, choosing its own steps until it stops.</p>
   </section>
 
   <section id="delegation">
     <h2>The delegation contract</h2>
-    <p>Suppose the parent writes the brief "look into the auth bug". The child starts with no history. It does not know which bug, which files the parent already read, or what answer is wanted. It will probably spend its budget rediscovering what the parent knew, then return a vague report.</p>
+    <p>Suppose the parent writes the brief "look into the auth bug". If the child starts with no history, it does not know which bug, which files the parent already read, or what answer is wanted. So it will probably spend its budget rediscovering what the parent knew, then return a vague report.</p>
     <p>A useful brief works like a contract between the two loops. It covers eight things:</p>
 <pre><code>brief = {
     "objective":   "List every place that checks token expiry. Do not fix anything.",
@@ -91,8 +90,8 @@
     "cancel":      "the parent can stop it; notes written so far stay",
     "reconcile":   "the parent re-reads each line before editing it",
 }</code></pre>
-    <p>Some of these fields are only requests, and some can be guarantees. The objective and the output format are text, so the child may drift from them. But your code starts the child, so it can enforce the tools, the budget, and the files the child may write. For example, "do not edit files" in the brief is a request, while giving the child only read tools makes editing impossible.</p>
-    <p>In practice, the parent model writes the objective and the facts it knows as the arguments of its <code>delegate</code> call. Your code fills in the tools, the budget, and the owned files from a fixed template, so the model cannot loosen them.</p>
+    <p>Some of these fields are only requests, and some can be guarantees. The objective and the output format are text, so the child may drift from them. But your code starts the child, so it can enforce the tools, the budget, and the files the child may write. For example, "do not edit files" is a request, while read-only tools make editing impossible.</p>
+    <p>In practice, the parent model writes the objective and the facts it knows. Your code fills in the tools, the budget, and the owned files from a fixed template, so the model cannot loosen them.</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>Delegation = a brief the parent model writes + limits your code enforces + a result the parent still has to check.</p>
@@ -113,7 +112,7 @@ Agent as a tool                      Handoff
                                       <span class="c-model">Billing</span> answers the <span class="c-human">user</span>
 </pre>
 </figure>
-    <p>Use call and return when the parent has to combine results or keep one voice toward the user. Use a handoff to route a conversation to a specialist. In a handoff, the conversation itself usually moves to the new agent, so it sees the history. A called child sees only its brief.</p>
+    <p>Use call and return when the parent has to combine results or keep one voice toward the user. Use a handoff to route a conversation to a specialist. A handoff usually moves the conversation itself to the new agent, while a called child usually starts with only its brief.</p>
   </section>
 
   <section id="isolation">
@@ -128,11 +127,11 @@ Agent as a tool                      Handoff
           <tr><th scope="row">Shared files</th><td>A folder or repo</td><td>Passing big results by reference: write notes, return the path</td><td>Two children editing one file</td></tr>
           <tr><th scope="row">Shared data</th><td>One state object in your code, such as a todo list</td><td>Results that flow back without entering the parent's context</td><td>Parallel writes need merge rules</td></tr>
           <tr><th scope="row">Shared conversation</th><td>A copy of the parent's message history</td><td>A cheap start for the child</td><td>No isolation: the child inherits the clutter</td></tr>
-          <tr><th scope="row">Nothing shared</th><td>Brief in, report out; its own worktree or container</td><td>Risky or fully separate work</td><td>Every fact must travel in the brief or the report</td></tr>
+          <tr><th scope="row">Nothing shared</th><td>Brief in, report out; its own worktree</td><td>Risky or fully separate work</td><td>Every fact must travel in the brief or the report</td></tr>
         </tbody>
       </table>
     </div>
-    <p>If children must not touch each other's files, give each its own copy of the work, such as a git worktree or a container.</p>
+    <p>If children write files, give each writer its own checkout or git worktree, so their edits cannot collide. A worktree is not an access limit, though, because an unrestricted process can still reach the others. To really block access, check paths in your tool code, or use mounts and OS permissions (<a href="10-sandboxing.html#filesystem-isolation">chapter 10</a>).</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
@@ -143,13 +142,13 @@ Agent as a tool                      Handoff
 
   <section id="specialization">
     <h2>Specialization</h2>
-    <p>Say a reviewer subagent has a prompt that says "you are a careful security reviewer". It also has no tool that can write, and only that second part is a guarantee. The prompt shapes what the reviewer tends to do, but the missing tools decide what it can do.</p>
-    <p>The cost is that a specialist knows less. For example, a reviewer that sees only the diff cannot tell whether the change matches the plan. Put what it needs in the brief. One loop can also specialize by switching its prompt and tools between phases. So you need a subagent only when you also want a separate context or budget.</p>
+    <p>Say a reviewer subagent's prompt says "you are a careful security reviewer", and it has no tool that can write. Only the missing tools are a guarantee. The prompt shapes what it tends to do, but the tools decide what it can do.</p>
+    <p>The cost is that a specialist knows less. For example, a reviewer that sees only the diff cannot tell whether the change matches the plan. Put what it needs in the brief.</p>
   </section>
 
   <section id="concurrency">
     <h2>Running children at the same time</h2>
-    <p>Suppose three children take 2, 3, and 2.5 minutes. If the parent asks for all three in one reply, and nothing slows them down, they finish after 3 minutes. That is the time of the slowest one. One after another, they would take 7.5 minutes. This works like the parallel tool calls in <a href="02-tools.html#parallel-calls">chapter 2</a>.</p>
+    <p>Suppose three children take 2, 3, and 2.5 minutes. If the parent asks for all three in one reply, and nothing slows them down, they finish after 3 minutes. That is the time of the slowest one. One after another, they would take 7.5 minutes.</p>
     <p>This saves time, but it does not save tokens. The extra tokens come from four places:</p>
     <ul>
       <li>each child sends its own instructions and tool definitions on every one of its calls;</li>
@@ -163,7 +162,7 @@ Agent as a tool                      Handoff
   <section id="aggregation">
     <h2>Combining the results</h2>
     <p>In the simulator below, a child researching Redis reads a config file. It shows that the team's Redis server deletes old data when memory runs low. The child's short summary leaves that out. So the parent recommends Redis for a job queue, where losing jobs is a real problem.</p>
-    <p>This step, combining what the children send back, is called aggregation. Each result is a claim written by another model, not proof. Summaries drop details, and by the time the parent reads one, the child is usually gone. Results can conflict, and then the parent needs evidence, such as the original document or a test. A confident tone is not evidence, and neither is a vote. Reports also go stale: a child says "the test passes", then another child changes a file the test depends on.</p>
+    <p>This step, combining what the children send back, is called aggregation. Each result is a claim written by another model, not proof. Summaries drop details, and by the time the parent reads one, the child is usually gone. Results can conflict, and then the parent needs evidence, such as the original document or a test. Reports also go stale: a child says "the test passes", then another child changes a file the test depends on.</p>
     <p>So design what comes back:</p>
     <ul>
       <li>Ask for references, such as file:line or a URL, so the parent can re-check claims cheaply.</li>
@@ -175,7 +174,6 @@ Agent as a tool                      Handoff
       <p class="callout-title">How real systems do it</p>
       <ul>
         <li><strong>Hermes</strong> (v0.22.2) returns each child's final text, cut at 24,000 characters, with the rest saved to a file. A task can carry an output schema. The parent checks the answer against it and sends one correction if it fails.</li>
-        <li><strong>Deep Agents</strong> (0.7.28) returns one tool message holding the child's last reply. Its general-purpose child is told, "The calling agent only sees your final assistant message".</li>
       </ul>
     </aside>
   </section>
@@ -184,15 +182,15 @@ Agent as a tool                      Handoff
     <h2>Try it: the subagent simulator</h2>
     <p>Patch's team needs a job queue for background work. The parent asks three children to research one option each: Redis Streams, RabbitMQ, and Amazon SQS. Try each scenario, then change what comes back and whether the children run at the same time.</p>
     <div class="widget" data-widget="subagents" data-start="clean">
-      <p class="noscript">Interactive widget. Without JavaScript, here is the clean run in words. The parent sends one queue to each of three children. Each child re-reads files the parent already knew, reads the docs, and sends back a short report. Running at the same time, the children finish in 3 minutes, against 7.5 minutes one after another. Together all agents use about 141,000 tokens, while one careful agent would use about 124,000.</p>
+      <p class="noscript">Interactive widget. Without JavaScript, here is the clean run in words. The parent sends one queue to each of three children, and each sends back a short report. Running at the same time, they finish in 3 minutes instead of 7.5. Together they use about 141,000 tokens, while one careful agent would use about 124,000.</p>
     </div>
     <p>When two children edit one file, each does what its brief says. The conflict comes from how the work was split.</p>
   </section>
 
   <section id="recursion">
     <h2>Children that start children</h2>
-    <p>Suppose every agent may start three children, and each of those may start three more. Three levels then give you 3 + 9 + 27 = 39 agent runs. Each level also passes along a summary of a summary, so details fade. And one misread brief near the top sends a whole branch the wrong way.</p>
-    <p>So most designs cap it. The usual limits are a maximum depth, a maximum number of children, and one budget shared by the whole tree. Hermes and Deep Agents both keep depth at one level by default, because their children get no tool for starting more children.</p>
+    <p>Suppose every agent may start three children, and each of those may start three more. Three levels then give you 3 + 9 + 27 = 39 agent runs. Each level also passes along a summary of a summary, so details fade.</p>
+    <p>Most designs cap it with a maximum depth, a maximum number of children, and one budget shared by the whole tree. Hermes and Deep Agents both keep depth at one level by default, because their children get no tool for starting more children.</p>
 <pre><code>def delegate(call, depth, budget):
     if depth >= MAX_DEPTH:
         return error(call.id, "delegation depth limit reached")
@@ -207,30 +205,30 @@ Agent as a tool                      Handoff
     <h2>When multiple agents help</h2>
     <p>Four problems justify a subagent most often:</p>
     <ul>
-      <li><strong>Independent parts.</strong> For example, three sources to research. Running them at the same time gets the answer sooner.</li>
+      <li><strong>Independent parts,</strong> such as three sources to research, which can run at the same time.</li>
       <li>Noisy searching. Finding the answer means reading far more than the answer, and isolation keeps that reading out of the main context.</li>
-      <li>Different permissions. Part of the work should run with fewer rights, such as a read-only explorer.</li>
+      <li>Different permissions, such as a read-only explorer.</li>
       <li>A fresh review. A reviewer that never saw the author's reasoning judges the change itself.</li>
     </ul>
-    <p>Published numbers show both the gain and the cost. Anthropic reports one result from its research system. A Claude Opus 4 lead with Claude Sonnet 4 subagents outperformed a single Claude Opus 4 agent by 90.2% on its internal research eval. The same post says multi-agent systems use "about 15× more tokens than chats", and that "most coding tasks involve fewer truly parallelizable tasks than research".</p>
+    <p>Anthropic reports one result from its research system. A Claude Opus 4 lead with Claude Sonnet 4 subagents outperformed a single Claude Opus 4 agent by 90.2% on its internal research eval. The same post says multi-agent systems use "about 15× more tokens than chats", and that "most coding tasks involve fewer truly parallelizable tasks than research".</p>
     <p>A complex task is not, by itself, a reason. It often needs one agent with a better context, not several agents that each see only part of it.</p>
   </section>
 
   <section id="when-not">
     <h2>When they cost more than they give</h2>
-    <p>Skip subagents, or remove them, in these cases:</p>
+    <p>Skip them in these cases:</p>
     <ul>
       <li><strong>The parts are linked.</strong> Edits to the same files, or decisions that depend on each other, drift apart when made in separate contexts.</li>
       <li>The task is small, so the briefs, the extra instructions, and the merging cost more than the work.</li>
       <li>The parent needs the details that a summary would drop.</li>
     </ul>
-    <p>Pi takes the skeptical side on purpose and ships no subagents. Its creator, Mario Zechner, calls a built-in subagent "a black box within a black box". He calls parallel subagents building separate features "an anti-pattern in my book". His one approved use is code review, where a command starts pi again through bash.</p>
-    <p>So start with one agent. When you add a subagent, measure whether it helped (<a href="16-evaluation.html">chapter 16</a>), and check that the gain came from the extra agents (<a href="18-model-vs-architecture.html#multiple-agents">chapter 18</a>).</p>
+    <p>Pi takes the skeptical side on purpose. It has no built-in subagent tool, though its repository ships an example extension that adds one. Its creator, Mario Zechner, calls parallel subagents building separate features "an anti-pattern in my book".</p>
+    <p>So start with one agent. When you add a subagent, measure whether it helped (<a href="16-evaluation.html">chapter 16</a>). Then check that the gain came from the extra agents (<a href="18-model-vs-architecture.html#multiple-agents">chapter 18</a>).</p>
   </section>
 
   <section id="running-example">
     <h2>Running example: Patch gets two helpers</h2>
-    <p>Patch version 7 gets two subagents, both called like any other tool. The explorer searches the code and returns a short report with file:line references. The reviewer can only read files, and its brief carries the diff and the latest test results. Patch still makes every edit itself, in one context, because edits to the auth code depend on each other.</p>
+    <p>Patch version 7 gets two subagents, both called like any other tool. The explorer searches the code and returns file:line references. The reviewer can only read, and its brief carries the diff and the test results. Patch still makes every edit itself, because edits to the auth code depend on each other.</p>
 <pre><code># Patch v7: two subagents, called like any other tool
 + explorer = Subagent(prompt=EXPLORE, tools=[search_files, read_file],
 +                     output="at most 900 tokens, path:line refs", max_steps=15)
@@ -254,7 +252,7 @@ Agent as a tool                      Handoff
       <dl>
         <dt>Why it happens</dt><dd>Each child follows its own brief and does not know the other exists, so the last write wins.</dd>
         <dt>How to spot it</dt><dd>Two children's change lists touch the same file, or the tests pass for each child and fail after merging.</dd>
-        <dt>What to do</dt><dd>Let your code enforce which files each child may write. Or do linked edits in one agent, or give each child its own worktree.</dd>
+        <dt>What to do</dt><dd>Give each writer its own worktree, or do linked edits in one agent. Where a write must be blocked, check paths in your tool code.</dd>
       </dl>
     </div>
     <div class="failure">
@@ -295,7 +293,7 @@ Agent as a tool                      Handoff
     <h2>Check yourself</h2>
     <div class="quiz">
       <p class="q">What is a subagent, mechanically? (Q12)</p>
-      <details class="answer"><summary>Answer</summary><p>A tool whose code runs another agent loop. The child has its own context and usually its own instructions, tools, and budget. The parent sees only what the tool returns.</p></details>
+      <details class="answer"><summary>Answer</summary><p>A tool whose code runs another agent loop, with its own context and usually its own instructions, tools, and budget.</p></details>
     </div>
     <div class="quiz">
       <p class="q">When should you avoid splitting work across several agents? (Q13, Q14)</p>
@@ -308,7 +306,7 @@ Agent as a tool                      Handoff
     </div>
     <div class="quiz">
       <p class="q">Three children take 4, 6, and 9 minutes, and nothing slows them down. How long do they take at the same time, and one after another?</p>
-      <details class="answer"><summary>Answer</summary><p>9 minutes at the same time, because the parent waits for the slowest child. 19 minutes one after another, because the times add up. The parent's own calls come on top in both cases.</p></details>
+      <details class="answer"><summary>Answer</summary><p>9 minutes at the same time, because the parent waits for the slowest child, and 19 minutes one after another. The parent's own calls come on top.</p></details>
     </div>
   </section>
 
@@ -323,7 +321,7 @@ Agent as a tool                      Handoff
   <section id="going-deeper">
     <h2>Going deeper</h2>
     <ul>
-      <li><a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> (Anthropic, June 2025). A lead agent with parallel subagents, with numbers on cost and on where the design fits.</li>
+      <li><a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> (Anthropic, June 2025). A lead agent with parallel subagents, with numbers on cost and fit.</li>
       <li><a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> (Cognition, June 2025). The case against: subagents that cannot see each other's decisions build parts that do not fit together.</li>
     </ul>
   </section>

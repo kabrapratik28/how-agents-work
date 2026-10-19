@@ -17,6 +17,7 @@
   };
   var TOOL_SEC = { read_file: 1, search_docs: 5, read_docs: 20, write_file: 1, edit_file: 1, run_command: 8, timeout: 30 };
   var ORDER = ['redis', 'rabbitmq', 'sqs'];
+  var BUDGET = { steps: 16, seconds: 360, errors: 3 }; // what each child's contract allows; your code enforces it
   var REQUEST = 'Pick a job queue for our background jobs: Redis Streams, RabbitMQ, or SQS.';
 
   var SCENARIOS = [
@@ -64,13 +65,13 @@
   var REPORTS = {
     full: {
       redis: 'Redis Streams: consumer groups, XACK and XAUTOCLAIM give at-least-once delivery. Risk: our Redis is a cache (allkeys-lru eviction, snapshots off: infra/elasticache.tf:14, :21), so queued jobs can be evicted or lost on restart. It would need a separate Redis with persistence. Notes: notes/queue-redis.md.',
-      rabbitmq: 'RabbitMQ: acks plus publisher confirms give at-least-once delivery; quorum queues for durability; dead lettering for failed jobs. Cost: a new broker to run and monitor (none in infra/main.tf). Notes: notes/queue-rabbitmq.md.',
-      sqs: 'SQS: managed by AWS, where we already run (infra/main.tf). Standard queues give at-least-once delivery with best-effort order; a visibility timeout and a dead-letter queue handle retries. Consumers must be idempotent. Notes: notes/queue-sqs.md.'
+      rabbitmq: 'RabbitMQ: acks plus publisher confirms give at-least-once delivery; quorum queues for durability; a dead-letter exchange sets aside jobs that keep failing. Cost: a new broker to run and monitor (none in infra/main.tf). Notes: notes/queue-rabbitmq.md.',
+      sqs: 'SQS: managed by AWS, where we already run (infra/main.tf). Standard queues give at-least-once delivery with best-effort order. A received job comes back if the worker does not finish it in time (the visibility timeout), and a dead-letter queue sets aside jobs that keep failing. Consumers must be idempotent. Notes: notes/queue-sqs.md.'
     },
     short: {
       redis: 'Redis Streams: consumer groups, XACK and XAUTOCLAIM give at-least-once delivery. Already in our stack, so the least new infrastructure.',
-      rabbitmq: 'RabbitMQ: at-least-once delivery with acks and confirms, quorum queues, dead lettering. A new broker to run.',
-      sqs: 'SQS: managed on AWS, at-least-once delivery, dead-letter queues. Consumers must be idempotent.'
+      rabbitmq: 'RabbitMQ: at-least-once delivery with acks and confirms, quorum queues, and a place to set aside failing jobs. A new broker to run.',
+      sqs: 'SQS: managed on AWS, at-least-once delivery, and a dead-letter queue for jobs that keep failing. Consumers must be idempotent.'
     },
     dupes: ' Duplicates: possible with any queue. A worker can crash after sending the email and before it acks, so consumers must be idempotent.',
     fifo: 'SQS: managed by AWS, where we already run. Use a FIFO queue: it gives exactly-once processing, so duplicate emails cannot happen. Notes: notes/queue-sqs.md.'
@@ -78,9 +79,9 @@
   var REPORT_TOKENS = { full: 340, short: 150, dupes: 380 };
 
   var ANSWERS = {
-    clean: 'Recommend SQS: a standard queue with a dead-letter queue. It is managed on AWS, where we already run. Delivery is at least once, so consumers must be idempotent. Redis Streams would need a separate Redis with persistence, because ours is a cache. RabbitMQ adds a broker to run.',
+    clean: 'Recommend SQS: a standard queue, plus a dead-letter queue where jobs that keep failing are set aside for a person to check. It is managed on AWS, where we already run. Delivery is at least once, so consumers must be idempotent. Redis Streams would need a separate Redis with persistence, because ours is a cache. RabbitMQ adds a broker to run.',
     lostWrong: 'Recommend Redis Streams. It is already in our stack, so it adds the least new infrastructure. Make consumers idempotent.',
-    partial: 'Recommend RabbitMQ: quorum queues, dead lettering, and no eviction risk. Redis Streams would need a separate persistent Redis. SQS was not evaluated, because its research failed.',
+    partial: 'Recommend RabbitMQ: quorum queues, a place to set aside failing jobs, and no eviction risk. Redis Streams would need a separate persistent Redis. SQS was not evaluated, because its research failed.',
     conflict: 'All three test scripts pass. Recommend SQS: managed on AWS, where we already run, with idempotent consumers.',
     owned: 'Recommend SQS. I set JOB_QUEUE_URL for SQS in app/settings.py. Each test script reads the URL from the environment, and all three pass.',
     confident: 'Recommend an SQS FIFO queue. Exactly-once processing means no duplicate emails, so consumers need no idempotency.',
@@ -131,7 +132,8 @@
   }
 
   // Run one child loop: every call re-sends the child's prompt, its brief, and its history so far.
-  function runChild(id, attempt, steps, brief, report, start, prefix) {
+  // Your code enforces the contract's limits: the step budget, the time budget, and tool errors in a row.
+  function runChild(id, attempt, steps, brief, report, start, prefix, budget) {
     var entries = [];
     var transcript = [{ id: id + '.' + attempt + ':brief', kind: 'brief', text: 'Brief: ' + brief.text, tokens: brief.tokens }];
     var calls = [];
@@ -139,6 +141,9 @@
     var writes = [];
     var t = start;
     var n = 0;
+    var rereads = 0;
+    var errorsInRow = 0;
+    var stop = null;
     function call(purpose, out, sec) {
       var hist = sum(entries, function (e) { return e.tokens; });
       var red = sum(entries.filter(function (e) { return e.rediscovery; }), function (e) { return e.tokens; });
@@ -151,33 +156,41 @@
       t = c.end;
       return c;
     }
-    steps.forEach(function (st) {
+    function outOfBudget() { return calls.length >= budget.steps || t - start >= budget.seconds; }
+    for (var i = 0; i < steps.length && !stop; i++) {
+      var st = steps[i];
+      if (outOfBudget()) { stop = 'budget'; break; }
       var out = st.out || P.callOut;
       call(st.tool + '(' + st.arg + ')', out, stepSec(st));
       if (st.write) writes.push({ by: id, value: st.write, at: t });
+      if (st.rediscovery) rereads += 1;
       entries.push({ tokens: out, rediscovery: !!st.rediscovery });
       entries.push({ tokens: st.tokens, rediscovery: !!st.rediscovery });
       n += 1;
       transcript.push({ id: id + '.' + attempt + ':' + n + 'c', kind: 'call', text: st.tool + '(' + st.arg + ')', tokens: out });
       transcript.push({ id: id + '.' + attempt + ':' + n + 'r', kind: 'result', text: st.text, tokens: st.tokens });
-    });
-    var failed = steps.length && steps[steps.length - 1].timeout;
-    var rereads = steps.filter(function (st) { return st.rediscovery; }).length;
-    var reportId = id + '.' + attempt + ':' + (failed ? 'failed' : 'report');
-    if (failed) {
-      transcript.push({ id: reportId, kind: 'failed', text: 'Failed after ' + steps.length + ' steps: read_docs timed out 3 times in a row. The loop stopped on its error rule. No report.', tokens: P.failNote });
+      errorsInRow = st.timeout ? errorsInRow + 1 : 0;
+      if (errorsInRow >= budget.errors) stop = 'errors';
+    }
+    if (!stop && outOfBudget()) stop = 'budget'; // no room left for the final report
+    var status = stop === 'errors' ? 'failed' : stop === 'budget' ? 'budget' : 'done';
+    var reportId = id + '.' + attempt + ':' + (status === 'done' ? 'report' : status);
+    if (status === 'failed') {
+      transcript.push({ id: reportId, kind: 'failed', text: 'Failed after ' + calls.length + ' steps: ' + budget.errors + ' tool errors in a row, so the loop stopped on its error rule. No report.', tokens: P.failNote });
+    } else if (status === 'budget') {
+      transcript.push({ id: reportId, kind: 'failed', text: 'Stopped after ' + calls.length + ' steps: its budget of ' + budget.steps + ' steps and ' + Math.round(budget.seconds / 60) + ' minutes ran out. No report.', tokens: P.failNote });
     } else {
       call('final report', report.tokens, P.finalSec);
       transcript.push({ id: reportId, kind: 'report', text: report.text, tokens: report.tokens });
     }
     return {
-      attempt: attempt, status: failed ? 'failed' : 'done', calls: calls, transcript: transcript, reportId: reportId,
+      attempt: attempt, status: status, calls: calls, transcript: transcript, reportId: reportId,
       reportText: transcript[transcript.length - 1].text, reportTokens: transcript[transcript.length - 1].tokens,
       start: start, end: t, acc: acc, writes: writes, rereads: rereads, returned: false
     };
   }
 
-  function contractFor(id, sc, o) {
+  function contractFor(id, sc, o, budget) {
     var c = CHILDREN[id];
     var shortOut = sc === 'lost' && !o.refs;
     var tools = ['search_docs', 'read_docs', 'read_file', 'write_file (notes only)'];
@@ -192,7 +205,7 @@
     return {
       child: id, label: c.label, objective: objective, tools: tools,
       output: shortOut ? 'A short summary, at most 150 tokens' : 'At most 350 tokens: how well it fits, risks with file and line, where the notes are',
-      budget: '12 steps and 6 minutes; 3 tool errors in a row end the run',
+      budget: budget.steps + ' steps and ' + Math.round(budget.seconds / 60) + ' minutes; ' + budget.errors + ' tool errors in a row end the run',
       owns: owns,
       cancel: 'The parent can stop it. Notes written so far stay.'
     };
@@ -273,7 +286,9 @@
     var events = [];
     function ev(actor, label, text) { events.push({ actor: actor, label: label, text: text }); }
 
-    var contracts = ORDER.map(function (id) { return contractFor(id, sc, o); });
+    // budgetSteps overrides the step budget; the tests use it to show the limit is enforced.
+    var budget = { steps: (opts && opts.budgetSteps) || BUDGET.steps, seconds: BUDGET.seconds, errors: BUDGET.errors };
+    var contracts = ORDER.map(function (id) { return contractFor(id, sc, o, budget); });
     var briefs = {};
     ORDER.forEach(function (id, i) {
       var k = contracts[i];
@@ -295,13 +310,13 @@
     var waitingFailure = false;
     ORDER.forEach(function (id) {
       var start = parallel ? t0 : cursor;
-      var r1 = runChild(id, 1, childSteps(id, sc, o, 1), briefs[id], reportFor(id, sc, o), start, P.childPrefix);
+      var r1 = runChild(id, 1, childSteps(id, sc, o, 1), briefs[id], reportFor(id, sc, o), start, P.childPrefix, budget);
       agents[id].push(r1);
       var last = r1;
       if (r1.status === 'failed') {
         if (choice === 'retry' || choice === 'ask') {
           if (choice === 'ask') humanWait = true;
-          var r2 = runChild(id, 2, childSteps(id, sc, o, 2), briefs[id], reportFor(id, sc, o), r1.end, P.childPrefix);
+          var r2 = runChild(id, 2, childSteps(id, sc, o, 2), briefs[id], reportFor(id, sc, o), r1.end, P.childPrefix, budget);
           agents[id].push(r2);
           last = r2;
         } else if (choice === 'partial') {
@@ -310,19 +325,26 @@
           waitingFailure = true;
         }
       }
-      if (last.status === 'done') last.returned = true;
+      if (last.status === 'done' || last.status === 'budget') last.returned = true;
       chains.push({ child: id, duration: last.end - start });
       cursor = last.end;
     });
     var phase = parallel ? Math.max.apply(null, chains.map(function (c) { return c.duration; })) : sum(chains, function (c) { return c.duration; });
 
     ORDER.forEach(function (id) {
-      agents[id].forEach(function (r) {
+      agents[id].forEach(function (r, k) {
         var c = CHILDREN[id];
+        if (k > 0 && choice === 'ask') {
+          ev('runtime', 'Your code', 'Pauses the run and asks you: the ' + c.short + ' child failed. Retry it, go on without it, or stop?');
+          ev('human', 'You', 'Retry it. We run on AWS, so SQS matters.');
+        } else if (k > 0) {
+          ev('runtime', 'Your code', 'Its failure rule says retry once, so it starts a fresh ' + c.short + ' child with the same brief.');
+        }
         var reads = r.rereads;
         var docsN = r.transcript.filter(function (e) { return e.kind === 'call' && /^read_docs|^search_docs/.test(e.text); }).length;
         var line = r.calls.length + ' model calls. ';
-        if (r.status === 'failed') line += 'Its docs fetches timed out 3 times in a row, so its loop stopped. Status: failed.';
+        if (r.status === 'failed') line += 'Its doc pages timed out 3 times in a row, so your code stopped its loop. Status: failed.';
+        else if (r.status === 'budget') line += 'Its budget ran out before it finished, so your code sends back a note instead of a report.';
         else {
           line += 'Re-read ' + reads + ' file' + (reads === 1 ? '' : 's') + ' the parent already knew, and looked things up in the docs ' + docsN + ' times. ';
           line += transcripts ? 'Sends back its whole transcript (' + fmt(sum(r.transcript, function (e) { return e.tokens; })) + ' tokens).' : 'Sends back a ' + r.reportTokens + '-token report.';
@@ -378,11 +400,7 @@
       blocks.push(resultBlock(cid, id, r));
     });
     if (!waitingFailure) ev('runtime', 'Your code', 'Puts ' + (transcripts ? 'every transcript' : 'the three reports') + ' into the parent\'s context as the results of its three calls (' + fmt(sum(blocks.filter(function (b) { return b.kind === 'result'; }), function (b) { return b.tokens; })) + ' tokens).');
-    if (choice === 'ask') {
-      ev('runtime', 'Your code', 'Pauses the run and asks you: the SQS child failed. Retry it, go on without it, or stop?');
-      ev('human', 'You', 'Retry it. We run on AWS, so SQS matters.');
-    }
-    if (choice === 'retry') ev('runtime', 'Your code', 'Its failure rule says retry once, so it starts a fresh SQS child with the same brief.');
+    if (choice === 'partial') ev('runtime', 'Your code', 'Goes on without the SQS research and passes the failure note to the parent.');
 
     var ctxNow = function () { return sum(blocks, function (b) { return b.tokens; }); };
     var tEnd = t0 + phase;
@@ -431,7 +449,7 @@
           { tool: 'run_command', arg: 'crash test on a local queue emulator', tokens: 300, text: 'Sent 1 job. Worker sent the email, then crashed before deleting. Message redelivered after the timeout. Emails sent: 2.' }
         ];
         var vBrief = { text: 'Two reports disagree on duplicates with SQS FIFO. Check both claims against the primary docs, then run a crash test. Report what you observed.', tokens: 200 };
-        verifier = runChild('verifier', 1, vSteps, vBrief, { text: 'Both partly right. FIFO deduplicates repeated sends within a 5-minute window. A worker that crashes after the side effect and before deleting gets the message again: 2 emails in the test. Consumers must be idempotent.', tokens: 260 }, tEnd, 1800);
+        verifier = runChild('verifier', 1, vSteps, vBrief, { text: 'Both partly right. FIFO deduplicates repeated sends within a 5-minute window. A worker that crashes after the side effect and before deleting gets the message again: 2 emails in the test. Consumers must be idempotent.', tokens: 260 }, tEnd, 1800, budget);
         verifier.returned = true;
         segs.push({ agent: 'verifier', label: 'Checks both claims', start: verifier.start, end: verifier.end, kind: 'child' });
         tEnd = verifier.end;
@@ -442,7 +460,7 @@
       parentCall('Combines the results', P.answer, P.mergeSec);
       if (choice === 'confident') {
         outcome = { status: 'risk', answer: ANSWERS.confident };
-        notesLine = 'The confident report was wrong. A worker that crashes after sending the email and before deleting the message gets it again after the visibility timeout.';
+        notesLine = 'The confident report was wrong. If a worker crashes after sending the email but before deleting the message, SQS hands the message out again when the worker\'s time to finish runs out (the visibility timeout).';
       } else if (choice === 'vote') {
         outcome = { status: 'weak', answer: ANSWERS.vote };
         notesLine = 'Right answer, weak method. The children run the same model over similar pages, so their mistakes can be correlated. A vote is not evidence.';
@@ -463,7 +481,12 @@
       notesLine = 'Your code refused the children\'s writes outside their own folders, so the parent made the one shared change, at the cost of one more call.';
     } else {
       parentCall('Combines the results', P.answer, P.mergeSec);
-      if (sc === 'coupled') {
+      var cutShort = ORDER.filter(function (id) { return agents[id][agents[id].length - 1].status === 'budget'; })
+        .map(function (id) { return CHILDREN[id].short; });
+      if (cutShort.length) {
+        outcome = { status: 'partial', answer: 'I cannot recommend a queue yet: the ' + cutShort.join(' and ') + ' research stopped before it reported.' };
+        notesLine = 'Your code stopped the ' + cutShort.join(' and ') + ' child when its step budget ran out, so the parent got a note instead of a report.';
+      } else if (sc === 'coupled') {
         outcome = { status: 'conflict', answer: ANSWERS.conflict };
         notesLine = 'Two children edited app/settings.py, and the last write won. So the ' + CHILDREN[conflict.broken[0]].short + ' test script is broken, while its report still says it passed.';
       } else if (sc === 'failure' && choice === 'partial') {
@@ -541,7 +564,7 @@
     };
   }
 
-  AC.sims['subagents'] = { scenarios: SCENARIOS, children: CHILDREN, order: ORDER, run: run };
+  AC.sims['subagents'] = { scenarios: SCENARIOS, children: CHILDREN, order: ORDER, budget: BUDGET, run: run };
 
   /* ---------- widget ---------- */
 

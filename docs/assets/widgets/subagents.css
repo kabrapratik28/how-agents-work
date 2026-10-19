@@ -45,13 +45,13 @@
 .sa-tokbar { position: relative; display: flex; height: 1.3rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-sunk); overflow: visible; }
 .sa-seg { height: 100%; }
 .sa-seg.parent { background: var(--model-bg); border-right: 1px solid var(--model-bd); border-radius: 5px 0 0 5px; }
-.sa-seg.kids { background: var(--text-3); opacity: .45; }
+.sa-seg.kids { background: color-mix(in srgb, var(--text-3) 45%, transparent); }
 .sa-mark { position: absolute; top: -.3rem; bottom: -.3rem; width: 0; border-left: 2.5px solid var(--text); }
 .sa-legend { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; margin: .45rem 0 0; font-size: .88rem; color: var(--text-2); }
 .sa-legend span { display: inline-flex; align-items: center; gap: .35rem; }
 .sa-sw { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; border: 1px solid var(--border-strong); }
 .sa-sw.parent { background: var(--model-bg); border-color: var(--model-bd); }
-.sa-sw.kids { background: var(--text-3); opacity: .45; }
+.sa-sw.kids { background: color-mix(in srgb, var(--text-3) 45%, transparent); }
 .sa-sw.mark { width: 0; border: 0; border-left: 2.5px solid var(--text); border-radius: 0; height: 1rem; }
 
 /* Details: calmer */
@@ -67,9 +67,9 @@
 .sa-track { position: relative; height: 1.1rem; background: var(--bg-sunk); border-radius: 4px; }
 .sa-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--bg-elev); }
 .sa-bar.parent { background: var(--model-bg); border-color: var(--model-bd); }
-.sa-bar.child { background: var(--text-3); border-color: var(--text-3); opacity: .5; }
+.sa-bar.child { background: color-mix(in srgb, var(--text-3) 50%, transparent); border-color: color-mix(in srgb, var(--text-3) 50%, transparent); }
 .sa-bar.failed { background: transparent; border: 1.5px dashed var(--bad); }
-.sa-axis { background: none; height: 1.1rem; font: .8rem var(--mono); color: var(--text-3); }
+.sa-axis { background: none; height: 1.1rem; font: .82rem var(--mono); color: var(--text-3); }
 .sa-axis span { position: absolute; top: 0; transform: translateX(-2px); white-space: nowrap; }
 .sa-axis span.end { transform: translateX(-100%); }
 .sa-ctx { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; font-size: .86rem; }
