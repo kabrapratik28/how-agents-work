@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The design brief · How AI Agents Work</title>
-<meta name="description" content="Decode the target sentence term by term, then write a brief an AI coding system can build from and you can verify.">
+<meta name="description" content="Turn the target sentence into a brief an AI coding system can build from, plus tests that show it did.">
 <link rel="stylesheet" href="assets/site.css">
 <script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
 </head>
@@ -14,111 +14,98 @@
   <header class="chapter-head">
     <p class="kicker">Chapter 21 · Thinking like a designer</p>
     <h1>The design brief</h1>
-    <p class="lede">Decode the course's target sentence, write its decisions into a brief, and make the AI show you that it built them.</p>
+    <p class="lede">Turn the course's target sentence into a brief that an AI coding system can build from, plus tests that show it did.</p>
     <div class="loop-map" data-focus="all"></div>
   </header>
 
   <section id="target">
     <h2>One sentence, many decisions</h2>
     <p class="target-sentence">"Build an agent with isolated subagents, durable task state, filesystem tools, human approval for dangerous actions, context compaction, and persistent project memory."</p>
-    <p>The course set out to make this sentence clear. Every phrase in it sounds precise. Every phrase also hides several design decisions. Hand the sentence to an AI coding system, and it will make those decisions for you. It will make some of them well. It will make others silently, and you will find them in production.</p>
-    <p>This chapter works in three steps. First, it decodes each phrase into a mechanism, its alternatives, and its failure modes. Next, it gives a brief template that brings the decisions into the open. Last, it fills in the template for Patch and lists the tests that show the build matches the brief.</p>
+    <p>Each phrase in this sentence sounds clear, but each one hides decisions. For example, "isolated subagents" does not say whether a helper may edit the same files as its parent. If you hand over the sentence as it stands, the AI coding system makes those decisions for you, usually without telling you.</p>
   </section>
 
   <section id="decode">
     <h2>Decode the sentence</h2>
-    <p>Each phrase gets the same treatment. First comes what it reduces to mechanically. Then come why you would want it, the alternatives, and what goes wrong. The last row says what you must specify. That row is the part to copy into your brief.</p>
+    <p>Each phrase below starts with an example from Patch, the course's coding agent. The table after it lists the alternatives, what goes wrong, and what your brief must specify.</p>
 
     <h3 id="isolated-subagents">Isolated subagents</h3>
-    <p>A subagent is another agent loop that the parent starts, typically through a tool call. It has its own context, and often its own prompt, tools, model, and budget. In most designs it returns a condensed result. "Isolated" says what it does not share with the parent. That word needs a definition, because context, state, files, and permissions can each be isolated or shared. <a href="07-subagents.html#isolation">Chapter 7</a> covers the options.</p>
+    <p>Patch needs to find every place that reads session tokens, which means opening about 40 files. Instead of reading them itself, it starts an explorer: a second agent loop with its own empty context and read-only tools. The explorer returns a 300-word summary, so Patch's context grows by 300 words instead of 40 files. "Isolated" names what the helper does not share with its parent: its context, its files, or its permissions. <a href="07-subagents.html#isolation">Chapter 7</a> covers the options.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Isolated subagents, decoded</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <caption>Isolated subagents</caption>
         <tbody>
-          <tr><th scope="row">Why</th><td>Noisy exploration stays out of the parent's context. Independent work can run in parallel. A helper can get fewer permissions than the parent, such as read-only tools.</td></tr>
-          <tr><th scope="row">Alternatives</th><td>One agent with careful context management. A workflow that maps over items in code. A handoff, which transfers control instead of calling and returning.</td></tr>
-          <tr><th scope="row">What goes wrong</th><td>A summary drops the detail that mattered. Two helpers edit the same file. Cost multiplies, because each helper builds its own context. Helpers that can delegate again recurse without limit.</td></tr>
-          <tr><th scope="row">You must specify</th><td>The roles. What each role's context holds at the start. Its tools and permissions. What it returns, in what format and length. Whether it shares files or state with the parent. Its budget and the maximum depth. Who reconciles conflicting results.</td></tr>
+          <tr><th scope="row">Alternatives</th><td>One agent that keeps its own context small, or a loop in code that runs the same model call on each item.</td></tr>
+          <tr><th scope="row">What goes wrong</th><td>A summary drops the detail that mattered, two helpers edit the same file, or cost grows because each helper builds its own context.</td></tr>
+          <tr><th scope="row">You must specify</th><td>Each helper's role, tools, and starting context, what it returns and how long, whether it shares files with the parent, and its budget.</td></tr>
         </tbody>
       </table>
     </div>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
-      <p>Deep Agents (Python SDK 0.7.28) starts a child agent through a <code>task</code> tool. In the default mode, the child's conversation begins with only the task description. The parent gets back the child's final message, plus any files it changed. Files are not isolated by default: with the default backend, a child reads and writes the same files as its parent, and they remain after it ends. Isolated context does not imply isolated state. See <a href="17-case-studies.html#deep-agents">chapter 17</a>.</p>
+      <p>In Deep Agents (Python SDK 0.7.28), a child agent's conversation starts with only the task description. The parent gets back the child's final message. But by default the child reads and writes the same files as its parent, so its context is isolated while its files are shared. See <a href="17-case-studies.html#deep-agents">chapter 17</a>.</p>
     </aside>
 
     <h3 id="durable-task-state">Durable task state</h3>
-    <p>The runtime saves the run's state outside the process, usually after every step. That state includes messages, the plan, the step count, pending approvals, and the status of each side effect. After a crash or a restart, a worker loads the latest checkpoint and continues. "Durable" is about recovery guarantees, not about running for a long time. <a href="12-long-running.html#checkpoints">Chapter 12</a> covers checkpoints and resumption.</p>
+    <p>Patch's nightly run crashes at step 12 when the server restarts. The runtime saved a checkpoint, a snapshot of the run's state, after every step. So a new worker loads step 12 and carries on. Without checkpoints the run starts over, and it may repeat side effects, such as opening a second pull request. "Durable" means the run survives crashes, not that it runs for a long time. <a href="12-long-running.html#checkpoints">Chapter 12</a> covers checkpoints.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Durable task state, decoded</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <caption>Durable task state</caption>
         <tbody>
-          <tr><th scope="row">Why</th><td>Runs survive crashes, deploys, and long waits for approval. A paused run holds no process while it waits. You can inspect a run and replay what happened.</td></tr>
-          <tr><th scope="row">Alternatives</th><td>Short runs that restart from scratch on failure. A database row updated at a few chosen points. A durable workflow engine that records each step for replay.</td></tr>
-          <tr><th scope="row">What goes wrong</th><td>Resuming repeats a side effect that already happened. A checkpoint written before an effect was recorded says "not sent" when it was sent. State saved by one code version is loaded by another. Two workers resume the same run.</td></tr>
-          <tr><th scope="row">You must specify</th><td>What a checkpoint contains, and when it is written. Which results are recorded, so a resume replays them instead of calling again. An idempotency key for each external effect, saved before the first attempt. What to do when an outcome is unknown. A lease, so only one worker owns a run.</td></tr>
+          <tr><th scope="row">Alternatives</th><td>Short runs that start over after a crash, which is fine when they have no side effects, or a workflow engine that records each step.</td></tr>
+          <tr><th scope="row">What goes wrong</th><td>A resumed run repeats an action that already happened, two workers resume the same run, or new code loads a checkpoint that old code wrote.</td></tr>
+          <tr><th scope="row">You must specify</th><td>What a checkpoint holds and when code writes it, an idempotency key (an id the receiver uses to ignore repeats) for each external action, and a lock so one worker owns each run.</td></tr>
         </tbody>
       </table>
     </div>
 
     <h3 id="filesystem-tools">Filesystem tools</h3>
-    <p>A handful of functions over a directory: list, search, read, edit, write, and sometimes delete. They give the agent a place for things that do not fit in context. For a coding agent, the files are also the work itself. <a href="02-tools.html#what-is-a-tool">Chapter 2</a> covers tools, and <a href="09-coding-agents.html#primitives">chapter 9</a> shows these ones at work.</p>
+    <p>Patch's test run prints 5,000 lines, far too many for its context. So the runtime saves the output to a file and shows Patch only the last 20 lines and the path. Patch reads more if it needs to. Filesystem tools are a few functions over one folder, such as read, search, edit, and write. They give the agent a place for everything that does not fit in context. <a href="02-tools.html#what-is-a-tool">Chapter 2</a> covers tools.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Filesystem tools, decoded</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <caption>Filesystem tools</caption>
         <tbody>
-          <tr><th scope="row">Why</th><td>Files hold far more than a context window. The agent can save notes, plans, and large tool outputs, then read back only what it needs. Files also outlive any one context.</td></tr>
-          <tr><th scope="row">Alternatives</th><td>A database or object store behind narrow tools. A virtual filesystem kept in run state instead of on disk. A shell, which can do everything file tools do and much more, including harm.</td></tr>
-          <tr><th scope="row">What goes wrong</th><td>A path escapes the workspace through <code>..</code> or a symlink. An overwrite destroys a file the agent never read. A huge file floods the context. Two writers edit the same file at once.</td></tr>
-          <tr><th scope="row">You must specify</th><td>The root, and whether it is real disk or virtual. Which paths are read-only and which are writable. Size limits on reads, and the preview format for large files. How edits work, such as an exact string that must match once. Whether delete exists. What enforces the root: a mount or path checks in code, never the prompt.</td></tr>
+          <tr><th scope="row">Alternatives</th><td>A database behind narrow tools, a virtual folder kept in the agent's state, or a shell, which can do everything the file tools do and far more harm.</td></tr>
+          <tr><th scope="row">What goes wrong</th><td>A path escapes the folder through <code>../</code> or a symbolic link, the agent overwrites a file it never read, or a huge file floods the context.</td></tr>
+          <tr><th scope="row">You must specify</th><td>The root folder and what enforces it (the sandbox or path checks, never the prompt), which paths are read-only, and when a long read becomes a preview.</td></tr>
         </tbody>
       </table>
     </div>
 
     <h3 id="human-approval">Human approval for dangerous actions</h3>
-    <p>A gate in the tool dispatcher. It matches certain calls, stops before running them, saves a checkpoint, and asks a person. The request is bound to the exact call and its arguments. Approve runs that call. Reject becomes the tool result. The runtime waits, not the model. <a href="11-human-in-the-loop.html#mechanism">Chapter 11</a> walks through the mechanism.</p>
+    <p>Patch wants to open a pull request. The runtime sees that <code>open_pr</code> is a gated tool, so it saves a checkpoint and stops. Then it asks a person to approve that exact call with its exact arguments. If the person approves, the runtime runs the call. If they reject it, the rejection goes back to Patch as the tool result. While the runtime waits, no model call is running. <a href="11-human-in-the-loop.html#mechanism">Chapter 11</a> covers the details.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Human approval, decoded</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <caption>Human approval</caption>
         <tbody>
-          <tr><th scope="row">Why</th><td>Some actions cost too much to get wrong: payments, messages to people, deploys, deleting data, using credentials. A person can catch what the model and the policy both missed.</td></tr>
-          <tr><th scope="row">Alternatives</th><td>Block the action outright. Contain it so it cannot do harm, such as a sandbox with no credentials. Let the other system enforce it, as branch protection does. Review afterward when an action is cheap to undo.</td></tr>
-          <tr><th scope="row">What goes wrong</th><td>The list of dangerous actions misses one. A script does the same thing by a path the gate does not intercept. People approve without reading because they are asked too often. The call that runs differs from the call that was approved. An edited call skips the policy check.</td></tr>
-          <tr><th scope="row">You must specify</th><td>The matching rule for each gated action. Who approves, and through which channel. What the approver sees. How long a request waits, and what happens on timeout. That edited or replacement calls go through the policy again. That a rejected call never runs.</td></tr>
+          <tr><th scope="row">Alternatives</th><td>Block the action outright, run it in a sandbox where it cannot do harm, or let the other system enforce the rule, as branch protection does for a main branch.</td></tr>
+          <tr><th scope="row">What goes wrong</th><td>A script reaches the same action by another path, people approve without reading because they are asked too often, or the call that runs differs from the approved one.</td></tr>
+          <tr><th scope="row">You must specify</th><td>Which calls are gated, who approves and what they see, what happens if nobody answers, and that an edited call goes through the checks again.</td></tr>
         </tbody>
       </table>
     </div>
 
     <h3 id="context-compaction">Context compaction</h3>
-    <p>When the context nears the window limit, the runtime replaces older history and tool output with something shorter: a summary, placeholders, or file references. The originals can stay in the runtime's log. A model call usually writes the summary. The runtime decides when to compact and what must survive. <a href="04-context.html#compaction">Chapter 4</a> covers compaction in depth.</p>
+    <p>After two hours, Patch's history fills 80% of its context window. The runtime asks the model to summarize the older messages and puts the summary in their place, so the run can continue. The full history stays in the runtime's log. The risk is the summary itself: if it drops "never edit the migrations folder", Patch may break that rule later. <a href="04-context.html#compaction">Chapter 4</a> covers compaction.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Context compaction, decoded</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <caption>Context compaction</caption>
         <tbody>
-          <tr><th scope="row">Why</th><td>Long runs would otherwise stop when the window fills. Smaller contexts cost less per call. Dropping stale output can also help the model focus.</td></tr>
-          <tr><th scope="row">Alternatives</th><td>Short runs with fresh contexts and state in files. Clearing old tool outputs while keeping each call paired with its result. Subagents that keep bulky work out of the parent's context.</td></tr>
-          <tr><th scope="row">What goes wrong</th><td>The summary drops a constraint, such as "never edit the migrations folder", and the agent breaks it later. A mistake in a summary becomes a fact. Compacting too often wastes calls and invalidates the prompt cache.</td></tr>
-          <tr><th scope="row">You must specify</th><td>The trigger, such as a share of the window. What survives word for word: the task, constraints, decisions, open todos, the latest test result. Whether code re-injects pinned constraints instead of trusting the summary. Where originals are kept, and whether the agent can read them back.</td></tr>
+          <tr><th scope="row">Alternatives</th><td>Short runs that start fresh and keep notes in files, short placeholders in place of old tool outputs, or subagents that keep bulky work out of the main context.</td></tr>
+          <tr><th scope="row">What goes wrong</th><td>The summary drops a rule or a decision, a mistake in the summary becomes a fact, or frequent compaction wastes model calls.</td></tr>
+          <tr><th scope="row">You must specify</th><td>When compaction starts, what must survive word for word (the task, the rules, the decisions, the last test result), and whether code copies pinned rules back in afterward.</td></tr>
         </tbody>
       </table>
     </div>
 
     <h3 id="project-memory">Persistent project memory</h3>
-    <p>A file or store of curated facts about the project that outlives every run. It comes with a policy for what gets written and how it reaches the context. Conventions are often injected into every call. Episodic notes, such as past fixes, are usually retrieved when relevant. <a href="05-memory.html#structured-memory">Chapter 5</a> covers the kinds of memory.</p>
+    <p>Every run, Patch used to rediscover that the project uses PostgreSQL and runs its tests with <code>pytest -q</code>. A project memory file stores facts like these, and the runtime adds the file to every call. Notes from past fixes live in a separate store, and the runtime retrieves them only when they match the task. <a href="05-memory.html#structured-memory">Chapter 5</a> covers memory.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Persistent project memory, decoded</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <caption>Persistent project memory</caption>
         <tbody>
-          <tr><th scope="row">Why</th><td>The agent stops rediscovering the same facts: the stack, the commands, the conventions, past decisions. Runs get shorter and more consistent.</td></tr>
-          <tr><th scope="row">Alternatives</th><td>A project instructions file that only people edit. Retrieval over the repo and its docs at use time. No memory at all, for one-off tasks.</td></tr>
-          <tr><th scope="row">What goes wrong</th><td>Stale facts outlive the code they described. Injected text in a tool output becomes "memory" and steers later runs. Memory grows until it crowds the context. Facts leak across projects or users.</td></tr>
-          <tr><th scope="row">You must specify</th><td>What is always injected, and what is retrieved. Who may write, and whether agent writes are proposals a person accepts. The scope, such as per project or per user. The source and date of each entry. How conflicts and deletions work. A size budget in tokens.</td></tr>
+          <tr><th scope="row">Alternatives</th><td>A project instructions file that only people edit, a search of the repo and its docs when needed, or no memory at all for one-off tasks.</td></tr>
+          <tr><th scope="row">What goes wrong</th><td>A fact goes stale when the code changes, text from a tool output gets saved and steers later runs, or the file grows until it crowds the context.</td></tr>
+          <tr><th scope="row">You must specify</th><td>What is always loaded and what is retrieved, who may write and whether the agent's writes need a person's approval, the scope, and a size limit.</td></tr>
         </tbody>
       </table>
     </div>
@@ -127,212 +114,167 @@
       <p class="callout-title">What does this reduce to?</p>
       <ul>
         <li>Isolated subagents = more loops, each with its own context and limits, returning short results.</li>
-        <li>Durable task state = a checkpoint after every step + idempotency for side effects.</li>
-        <li>Filesystem tools = a few functions over a bounded directory.</li>
-        <li>Human approval for dangerous actions = a blocking gate in the dispatcher, bound to one exact call.</li>
+        <li>Durable task state = a checkpoint after each step + idempotency for side effects.</li>
+        <li>Filesystem tools = a few functions over a bounded folder.</li>
+        <li>Human approval = a blocking gate in the dispatcher, bound to one exact call.</li>
         <li>Context compaction = a rule for shrinking old context + a list of what must survive.</li>
-        <li>Persistent project memory = curated storage + a write policy + injection or retrieval.</li>
+        <li>Persistent project memory = curated storage + a write policy + loading or retrieval.</li>
       </ul>
     </aside>
   </section>
 
   <section id="template">
     <h2>A brief template</h2>
-    <p>An AI coding system builds what the brief says and guesses the rest. A template makes the guesses visible. Each section below answers questions from earlier chapters. Keep each one short: a sentence or a few bullets.</p>
+    <p>Give an AI coding system only the target sentence, and it will choose the step limit for you. It will also choose the compaction trigger and the list of gated actions. A brief lets you make those choices yourself. The template lists the sections where a guess does the most damage. One or two lines per section is usually enough.</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>Design brief template</caption>
         <thead><tr><th scope="col">Section</th><th scope="col">What to write</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Goal and non-goals</th><td>What the agent is for. What it must never do or attempt.</td></tr>
+          <tr><th scope="row">Goal and non-goals</th><td>What the agent is for, and what it must never do.</td></tr>
           <tr><th scope="row">Users and triggers</th><td>Who starts a run, and how: chat, schedule, event, or queue.</td></tr>
-          <tr><th scope="row">Loop and termination</th><td>The loop shape. Who proposes done, what stops a run, and what evidence verifies success.</td></tr>
-          <tr><th scope="row">Tools</th><td>Each tool with its effect class, input limits, and where it runs.</td></tr>
-          <tr><th scope="row">State model</th><td>The state object, its source of truth, and when it is saved.</td></tr>
-          <tr><th scope="row">Context policy</th><td>What goes into each call, and in what order. What stays out. How long outputs are handled.</td></tr>
-          <tr><th scope="row">Memory policy</th><td>What is remembered, who writes it, its scope, and how it reaches the context.</td></tr>
-          <tr><th scope="row">Planning</th><td>Whether there is a plan or todo list, and whether a person approves it.</td></tr>
-          <tr><th scope="row">Delegation</th><td>Subagent roles, their tools, what they return, and the maximum depth.</td></tr>
-          <tr><th scope="row">Skills</th><td>Which packages exist and how they load. Loading a skill grants no permissions.</td></tr>
-          <tr><th scope="row">Security boundary</th><td>What the process can touch at all, and what enforces each limit.</td></tr>
-          <tr><th scope="row">Approvals</th><td>Each gated action, the approver, what they see, and what a rejection does.</td></tr>
+          <tr><th scope="row">Loop and termination</th><td>The loop's shape, what stops a run, and what proves success.</td></tr>
+          <tr><th scope="row">Tools</th><td>Each tool, its effect class, and where it runs.</td></tr>
+          <tr><th scope="row">State model</th><td>What the runtime tracks, where it lives, and when it is saved.</td></tr>
+          <tr><th scope="row">Context policy</th><td>What each model call sees, in what order, and what stays out.</td></tr>
+          <tr><th scope="row">Memory policy</th><td>What is remembered, who may write it, and how it is loaded.</td></tr>
+          <tr><th scope="row">Planning</th><td>Whether there is a plan or todo list, and who approves it.</td></tr>
+          <tr><th scope="row">Delegation</th><td>Helper roles, their tools, what they return, and their limits.</td></tr>
+          <tr><th scope="row">Skills</th><td>Which instruction packages exist, and when they load.</td></tr>
+          <tr><th scope="row">Security boundary</th><td>What the process can touch at all, and what enforces it.</td></tr>
+          <tr><th scope="row">Approvals</th><td>Each gated action, who approves it, and what a rejection does.</td></tr>
           <tr><th scope="row">Durability</th><td>Checkpoints, retries, idempotency keys, and how a run resumes.</td></tr>
-          <tr><th scope="row">Observability</th><td>What every trace records, and where people read it.</td></tr>
-          <tr><th scope="row">Evaluation</th><td>The task set, what counts as a successful trial, trials per task, and metrics.</td></tr>
-          <tr><th scope="row">Budgets</th><td>Steps, tokens, cost, and time, per run and per subagent.</td></tr>
+          <tr><th scope="row">Observability</th><td>What each trace records, and where people read it.</td></tr>
+          <tr><th scope="row">Evaluation</th><td>The test tasks, what counts as success, and trials per task.</td></tr>
+          <tr><th scope="row">Budgets</th><td>Steps, tokens, money, and time, per run and per helper.</td></tr>
         </tbody>
       </table>
     </div>
-    <p>A few habits make a brief work.</p>
-    <ul>
-      <li>Write limits as numbers, even rough ones. "A small budget" is not a limit. "30 steps" is.</li>
-      <li>For every rule, say what enforces it: runtime code, the environment, an external service, or only the prompt. A rule that only the prompt enforces is a request.</li>
-      <li>Fill every section, even if the answer is "none". A workflow may need no planning, delegation, or skills. A blank section invites the AI to invent something.</li>
-    </ul>
+    <p>Write limits as numbers, such as "30 steps" instead of "a small budget", because code can check a number. For each rule, also say what enforces it: code, the sandbox, another system, or only the prompt. If only the prompt enforces a rule, the model can ignore it. And write "none" in sections that do not apply, so the AI does not invent something.</p>
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
-      <p>A design brief is a design doc and an interface contract in one. It says what to build and which properties must hold.</p>
-      <p class="breaks"><strong>Where it breaks:</strong> a human engineer asks when something is unclear. An AI coding system usually fills the gap with a plausible guess and keeps going. So the brief must be explicit where a design doc could stay vague.</p>
+      <p>A design brief works like a design document plus an interface contract: it says what to build and which rules must hold.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a human engineer asks when something is unclear, but an AI coding system usually guesses and keeps going. So a brief must be explicit where a design document could stay vague.</p>
     </aside>
   </section>
 
   <section id="example-brief">
     <h2>Example: Patch's brief</h2>
-    <p>Here is the template filled in for Patch, the coding agent from the running example. It is the target sentence, made specific. Numbers such as step counts and costs are examples. Choose your own, but do choose them.</p>
+    <p>Here is the template filled in for Patch. It is the target sentence made specific. The numbers are examples, so choose your own, but do choose them.</p>
     <div class="panel">
-      <p>Build Patch, a coding agent for our web service: a Python API on PostgreSQL, deployed on AWS, with a TypeScript front end. Patch has isolated subagents, durable task state, filesystem tools, human approval for dangerous actions, context compaction, and persistent project memory. The sections below define each one.</p>
+      <p>Build Patch, a coding agent for our web service: a Python API on PostgreSQL, deployed on AWS, with a TypeScript front end.</p>
       <h4>Goal and non-goals</h4>
       <ul>
-        <li>Fix bugs and make small changes. Deliver a pull request with passing tests and a short summary.</li>
-        <li>Never merge, deploy to production, or touch production data. No work outside this repo.</li>
+        <li>Fix bugs and make small changes, each delivered as a pull request with passing tests.</li>
+        <li>Never merge, deploy to production, or touch production data.</li>
       </ul>
       <h4>Users and triggers</h4>
       <ul>
-        <li>Interactive: a developer gives Patch a task in the terminal and watches.</li>
-        <li>Nightly: a queue of issues labeled <code>patch-ok</code>, one run per issue.</li>
+        <li>Developers give tasks in the terminal. A nightly queue runs issues labeled <code>patch-ok</code>, one run per issue.</li>
       </ul>
       <h4>Loop and termination</h4>
       <ul>
-        <li>One agent loop with two helper subagents. No hierarchy.</li>
-        <li>The model proposes done by replying with no tool calls.</li>
-        <li>The runtime stops on a done proposal whose checks pass, or at 30 steps, or at $3 of model calls. It also stops when the same tool call repeats three times in a row, or when the user stops it.</li>
-        <li>Success means the target test and the full suite pass, and the reviewer finds no unexplained changes. The runtime checks this. The model's claim is not evidence.</li>
+        <li>Patch runs one agent loop with two helpers. The runtime stops when Patch proposes done and the checks pass. It also stops at 30 steps, at $3, or after three identical tool calls in a row.</li>
+        <li>Done means the target test and the full test suite pass. The runtime checks this, not the model.</li>
       </ul>
       <h4>Tools</h4>
       <ul>
-        <li><code>search_files</code>, <code>read_file</code>: read-only.</li>
-        <li><code>edit_file</code>: reversible write, repo only. The old text must match exactly once.</li>
-        <li><code>run_command</code>: the effect depends on the command. It runs inside the sandbox only. Allowlisted commands, such as <code>pytest</code>, <code>git status</code>, and <code>git diff</code>, run freely. Output over 2,000 tokens goes to a file. The model sees the first and last 20 lines and the path.</li>
-        <li><code>todo_write</code>: reversible write to run state.</li>
-        <li><code>delegate(role, task)</code>: read-only. It starts the explorer or the reviewer, and both have read-only tools.</li>
-        <li><code>open_pr(branch, title, body)</code>: external. It runs in the runtime, outside the sandbox.</li>
-        <li>Return validation errors to the model as tool results, tied to the call id.</li>
+        <li>Read-only: <code>search_files</code>, <code>read_file</code>, and <code>delegate</code>, whose helpers can only read.</li>
+        <li>Reversible write: <code>edit_file</code> in the repo, and <code>todo_write</code> in the run's state.</li>
+        <li>Depends on the command: <code>run_command</code>, which runs only in the sandbox. Allowlisted commands such as <code>pytest</code> run without asking.</li>
+        <li>External: <code>open_pr</code>, which the runtime runs outside the sandbox.</li>
+        <li>Outputs over 2,000 tokens go to a file, and Patch sees the last 20 lines and the path.</li>
       </ul>
       <h4>State model</h4>
       <ul>
-        <li>One state object per run: messages, status, step, files read, files changed, test results, todos, approvals, cost, and pinned constraints.</li>
-        <li>Save a checkpoint after every step, keyed by run id. Nightly runs also map each issue key to its run and its pull request.</li>
+        <li>One state object per run holds the messages, step count, files changed, test results, todos, approvals, cost, and pinned rules. The runtime saves it after every step.</li>
       </ul>
       <h4>Context policy</h4>
       <ul>
-        <li>Stable prefix first: the system prompt, tool definitions, and <code>AGENTS.md</code>. Then the history and the latest results.</li>
-        <li>Never put secrets, environment variables, or credential files in context.</li>
-        <li>At 80% of the window, compact. The summary keeps the task, decisions, files changed, the last test result, and open todos. Code re-injects the pinned constraints after every compaction. Originals stay in the run log.</li>
+        <li>The order is system prompt, tool definitions, <code>AGENTS.md</code>, then history. Secrets never enter the context.</li>
+        <li>At 80% of the window, compact. Code copies the pinned rules back in after each compaction.</li>
       </ul>
       <h4>Memory policy</h4>
       <ul>
-        <li><code>AGENTS.md</code> holds the stack, commands, and conventions. Inject it into every call.</li>
-        <li>Retrieve up to three episodic notes from past fixes, matched by file path and error text.</li>
-        <li>Patch proposes memory changes inside its pull request. A person keeps or drops them. Never store secrets or personal data.</li>
+        <li><code>AGENTS.md</code> holds the stack, commands, and conventions, and goes into every call. Up to three notes from past fixes are retrieved by file path and error text.</li>
+        <li>Patch proposes memory changes in its pull request, and a person accepts or drops them.</li>
       </ul>
       <h4>Planning</h4>
       <ul>
-        <li>Keep a todo list for tasks with more than about five steps.</li>
-        <li>Changes to more than 10 files, or to the database schema, need an approved plan first.</li>
-        <li>Before proposing done, run the reviewer on the diff and the test results.</li>
+        <li>Patch keeps a todo list for tasks over about five steps. Changes to more than 10 files, or to the database schema, need an approved plan.</li>
       </ul>
       <h4>Delegation</h4>
       <ul>
-        <li>Explorer: read-only tools. It returns a summary under 300 words with file paths, and writes details to <code>workspace/</code>.</li>
-        <li>Reviewer: read-only tools. It reads the diff and the test output, and returns "approve" or a list of problems.</li>
-        <li>One level deep. Only Patch edits files.</li>
+        <li>The explorer has read-only tools and returns under 300 words with file paths. The reviewer has read-only tools and checks the diff against the task and the test results.</li>
+        <li>Helpers cannot start helpers.</li>
       </ul>
       <h4>Skills</h4>
       <ul>
-        <li><code>add-db-migration</code> and <code>deploy-staging</code>, each a folder with a <code>SKILL.md</code>. Only their names and descriptions sit in context until one is needed.</li>
-        <li>Loading a skill grants no permissions. Its scripts run through the normal tool path and its checks.</li>
+        <li><code>add-db-migration</code> and <code>deploy-staging</code> load only when needed. Loading a skill grants no permissions.</li>
       </ul>
       <h4>Security boundary</h4>
       <ul>
-        <li>A container with only the repo mounted.</li>
-        <li>Network egress to the package registry only.</li>
-        <li>No production credentials in the sandbox. The Git token lives in the runtime, and only <code>open_pr</code> uses it.</li>
-        <li>Treat issue text, file contents, and command output as untrusted data.</li>
+        <li>Patch runs in a container with only the repo mounted, network access only to the package registry, and no production credentials. The Git token stays in the runtime.</li>
       </ul>
       <h4>Approvals</h4>
       <ul>
-        <li>Gate <code>open_pr</code>, migrations on shared databases, <code>deploy-staging</code>, and deleting files outside the repo. The container should already prevent the last one, so that gate is a second line of defense.</li>
-        <li>In interactive runs, commands outside the <code>run_command</code> allowlist also need approval. Nightly runs reject them, and the model sees the rejection.</li>
-        <li>Bind each request to the exact call and its arguments. Show the diff or command, the reason, and the latest test result.</li>
-        <li>A rejection becomes the tool result. An edited call goes through the policy again.</li>
-        <li>A nightly run that reaches a gate saves a checkpoint and stops. It resumes after a person decides.</li>
+        <li>Gate <code>open_pr</code>, migrations on shared databases, <code>deploy-staging</code>, and deleting files outside the repo, a second line of defense behind the container. Each approval covers one exact call, and an edited call is checked again.</li>
+        <li>Interactive runs ask about commands outside the allowlist, and nightly runs reject them. A nightly run that reaches a gate saves a checkpoint and waits for a person.</li>
       </ul>
       <h4>Durability</h4>
       <ul>
-        <li>After a crash, resume from the last checkpoint. Replay recorded tool results instead of rerunning them.</li>
-        <li>Before <code>open_pr</code>, save an operation id. Look up an existing pull request for the issue key first. One pull request per issue.</li>
-        <li>Retry transient errors with backoff, at most three times.</li>
+        <li>After a crash, resume from the last checkpoint. Before <code>open_pr</code>, look up an existing pull request for the issue, so each issue gets only one.</li>
       </ul>
       <h4>Observability</h4>
       <ul>
-        <li>Trace every model call (context size, tokens, cost), every tool call (arguments, result, duration), every policy decision, and every approval.</li>
-        <li>Link the trace from the pull request description.</li>
+        <li>Record every model call, tool call, policy decision, and approval, and link the trace from the pull request.</li>
       </ul>
       <h4>Evaluation</h4>
       <ul>
-        <li>Replay 50 past bugs in containers, three trials each.</li>
-        <li>A trial succeeds only if both test checks pass, no gated action ran without approval, and the diff stays within the bug's scope.</li>
-        <li>Track success rate, cost, steps, and interventions per task. Compare versions with paired trials on the same tasks.</li>
+        <li>Replay 50 past bugs, three trials each. A trial passes only if the tests pass and no gated action ran without approval. Track cost and human interventions.</li>
       </ul>
       <h4>Budgets</h4>
       <ul>
-        <li>Per run: 30 steps and $3. Wall clock: 20 minutes interactive, 60 minutes per nightly issue.</li>
-        <li>Per subagent: 15 steps. At most three subagent runs per task.</li>
+        <li>Each run gets 30 steps and $3, with 20 minutes when interactive and 60 minutes at night. Helpers get 15 steps each.</li>
       </ul>
     </div>
   </section>
 
   <section id="acceptance">
     <h2>Acceptance: what to ask the AI to show you</h2>
-    <p>A brief is a claim about code that does not exist yet. Acceptance turns that claim into evidence. Ask the AI coding system for four things, and read them before you read much code.</p>
+    <p>Suppose the brief says that a rejected call never runs. Reading the brief cannot show that the code obeys it, and reading all the code is slow. So ask the AI coding system for three things.</p>
     <ol>
-      <li>An enforcement map. For each rule in the brief, it names the file and function that enforce it. A rule with no entry is not enforced.</li>
-      <li>Scenario tests with a scripted model. A fake model returns a fixed sequence of replies, so each test is repeatable. The tests exercise the runtime, which is where the invariants live.</li>
-      <li>A trace of one real run, end to end, such as the failing auth test.</li>
-      <li>An evaluation report: success over several trials per task, cost, and interventions.</li>
+      <li>An enforcement map: for each rule in the brief, the file and function that enforce it. A rule with no entry is not enforced.</li>
+      <li>Scenario tests with a scripted model, which is a fake model that returns replies you wrote in advance. The replies never change, so each test checks your runtime's rules, not the model's choices.</li>
+      <li>A trace of one real run, such as fixing the failing auth test, so you can watch each rule act.</li>
     </ol>
-    <p>The scenario tests matter most. Each one targets an invariant from the brief.</p>
     <div class="table-wrap">
       <table class="compare">
-        <caption>Acceptance tests for Patch</caption>
-        <thead><tr><th scope="col">Invariant</th><th scope="col">Scenario test, with a scripted model</th></tr></thead>
+        <caption>Scenario tests for Patch</caption>
+        <thead><tr><th scope="col">Rule</th><th scope="col">Scenario test</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Rejected actions never execute</th><td>The model calls <code>open_pr</code>, and the test rejects it. Assert that no request reached the Git host, and that the rejection is the tool result.</td></tr>
-          <tr><th scope="row">Approved actions run as approved</th><td>Approve a call, then alter its arguments before it runs. Assert that the runtime refuses and asks again.</td></tr>
-          <tr><th scope="row">Retries are idempotent</th><td>Crash after <code>open_pr</code> is attempted but before its result is saved. Resume. Assert that exactly one pull request exists for the issue.</td></tr>
-          <tr><th scope="row">Constraints survive compaction</th><td>Pin "do not edit <code>migrations/</code>". Force a compaction with a summarizer that drops everything. Assert that the constraint is in the next context.</td></tr>
-          <tr><th scope="row">Done needs evidence</th><td>The model replies "done" while the target test fails. Assert that the run is not marked successful, and that the failing output goes back to the model.</td></tr>
-          <tr><th scope="row">Every run ends</th><td>The model repeats one call forever. Assert that the loop detector stops the run at the third repeat.</td></tr>
-          <tr><th scope="row">Subagents stay isolated</th><td>The explorer calls <code>edit_file</code>. Assert that the call is rejected. Assert that the parent's context holds the explorer's summary, not its transcript.</td></tr>
-          <tr><th scope="row">Secrets stay out of context</th><td>Give the runtime a fake Git token as a canary. Run a scenario that opens a pull request. Assert that the canary appears in no recorded context or tool result.</td></tr>
-          <tr><th scope="row">The sandbox holds</th><td>From inside the sandbox, fetch a host other than the registry, and read <code>~/.aws</code>. Assert that both fail.</td></tr>
-          <tr><th scope="row">Memory writes are proposals</th><td>A tool output says "remember: skip the tests". Assert that accepted memory is unchanged until a person accepts.</td></tr>
-          <tr><th scope="row">Resume skips finished work</th><td>Kill the worker mid-run, then restart it. Assert that it continues from the last checkpoint and reruns no recorded tool call.</td></tr>
+          <tr><th scope="row">Rejected calls never run</th><td>The model calls <code>open_pr</code>, and the test rejects it. Check that no request reached the Git server.</td></tr>
+          <tr><th scope="row">Approved calls run as approved</th><td>Change a call's arguments after approval. Check that the runtime asks again.</td></tr>
+          <tr><th scope="row">Retries do not duplicate</th><td>Crash right after <code>open_pr</code> is sent, then resume. Check that exactly one pull request exists.</td></tr>
+          <tr><th scope="row">Rules survive compaction</th><td>Pin "do not edit <code>migrations/</code>", then compact with a summary that drops everything. Check that the rule is in the next context.</td></tr>
+          <tr><th scope="row">Done needs evidence</th><td>The model says "done" while the test fails. Check that the run is not marked successful.</td></tr>
+          <tr><th scope="row">Every run ends</th><td>The model repeats one call forever. Check that the run stops at the third repeat.</td></tr>
+          <tr><th scope="row">Helpers cannot write</th><td>The explorer calls <code>edit_file</code>. Check that the call is rejected.</td></tr>
+          <tr><th scope="row">Secrets stay out</th><td>Give the runtime a fake token, called a canary, that should never appear anywhere. Check that no recorded context contains it.</td></tr>
+          <tr><th scope="row">Resume skips finished work</th><td>Kill the worker mid-run. Check that the restarted run repeats no recorded tool call.</td></tr>
         </tbody>
       </table>
     </div>
-    <p>Ask for proof that each test can fail. Remove the approval gate, and the rejection test should go red. A test that cannot fail proves nothing.</p>
-    <p>Then read the trace. Look for each rule in action: the stable prefix, a policy decision, a checkpoint, a compaction. If you cannot find a rule in the trace, ask where it lives. <a href="19-what-you-design.html">Chapter 19</a> covers reviewing AI-written agent code by its invariants. <a href="16-evaluation.html">Chapter 16</a> covers the evaluation report.</p>
+    <p>Also ask to see each test fail when its rule is removed. For example, if someone deletes the approval gate, the rejection test should fail. A test that still passes was never checking the gate.</p>
   </section>
 
   <section id="your-brief">
     <h2>Your turn: write a brief</h2>
-    <p>Pick an agent you actually want to build. If nothing comes to mind, take a scenario from <a href="20-exercises.html">chapter 20</a>. Fill in all sixteen sections. Then grade the brief with the chapter 20 <a href="20-exercises.html#rubric">rubric</a>, and list the acceptance tests you would ask for.</p>
+    <p>Pick an agent you want to build, or take a scenario from <a href="20-exercises.html">chapter 20</a>. Fill in all sixteen sections, grade the brief with the chapter 20 <a href="20-exercises.html#rubric">rubric</a>, and list the scenario tests you would ask for.</p>
     <div class="exercise">
       <label for="brief-notes">Your brief</label>
       <textarea id="brief-notes" class="ex-notes" rows="16" placeholder="Goal and non-goals:&#10;Users and triggers:&#10;Loop and termination:&#10;Tools (with effect classes):&#10;State model:&#10;Context policy:&#10;Memory policy:&#10;Planning:&#10;Delegation:&#10;Skills:&#10;Security boundary:&#10;Approvals:&#10;Durability:&#10;Observability:&#10;Evaluation:&#10;Budgets:"></textarea>
     </div>
-  </section>
-
-  <section id="takeaways">
-    <h2>Takeaways</h2>
-    <ul>
-      <li>Each phrase in the target sentence reduces to a mechanism plus a handful of decisions.</li>
-      <li>"Isolated" and "durable" need definitions. Ask: isolated from what, and durable against what?</li>
-      <li>A good brief states limits as numbers and names what enforces each rule.</li>
-      <li>A blank section invites the AI to invent an answer. Write "none" when you mean none.</li>
-      <li>Acceptance means evidence: an enforcement map, scripted-model tests that can fail, and a real trace.</li>
-    </ul>
   </section>
 </main>
 <script defer src="assets/chapters.js"></script>

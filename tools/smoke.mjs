@@ -164,6 +164,7 @@ async function main() {
           await page.goto(base + p);
           await page.waitForTimeout(100);
           await page.screenshot({ path: path.join(screensDir, `${p.replace('.html', '')}-${m.tag}.png`) });
+          await page.addStyleTag({ content: '.topbar{position:static !important}' }); // keep it off widget shots
           const widgets = await page.locator('[data-widget]').count();
           for (let w = 0; w < widgets; w++) {
             const el = page.locator('[data-widget]').nth(w);
