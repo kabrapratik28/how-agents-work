@@ -36,9 +36,9 @@
       label: 'Add a migration',
       user: 'Add a nullable last_login_at column to the users table.',
       skill: 'add-db-migration',
-      bodyText: 'text of SKILL.md: when to use it, then 4 steps. Step 2 says to run scripts/new_migration.py with the table and column. Step 4 says never to apply it to a shared database without approval.',
+      bodyText: 'text of SKILL.md: when to use it, then 4 steps. Step 2 says to run scripts/new_migration.py with the table and column. Step 4 says to apply it to the shared database only with the run_migration tool.',
       userSay: 'Twelve skills sit on disk as folders. None of their text is in the model\'s view yet.',
-      final: 'Added migrations/versions/0042_add_last_login_at.py: a nullable last_login_at column on users, with a downgrade. The skill\'s checks passed. I did not apply it to any shared database, because that needs your approval.'
+      final: 'Added migrations/versions/0042_add_last_login_at.py: a nullable last_login_at column on users, with a downgrade. The skill\'s checks passed. Applying it to the shared database goes through the run_migration tool, which asks you first.'
     },
     untrusted: {
       label: 'A skill from the internet',
@@ -112,7 +112,7 @@
     LIBRARY.forEach(function (s) { files['skills/' + s.name + '/SKILL.md'] = upfront ? 'in context' : 'listed in index'; });
     files[SCRIPT] = 'on disk';
     files[MIG + 'references/conventions.md'] = 'on disk';
-    files['skills/deploy-staging/scripts/deploy.sh'] = 'on disk';
+    files['skills/deploy-staging/references/smoke-checks.md'] = 'on disk';
     files['skills/pdf-extract/scripts/extract_tables.py'] = 'on disk';
     var seq = 0;
     var lastCheck = null;
@@ -320,7 +320,7 @@
       var f = s.files;
       var ul = h('ul', { class: 'sk-files' });
       [['add-db-migration', [['SKILL.md', MIG + 'SKILL.md'], ['scripts/new_migration.py', SCRIPT], ['references/conventions.md', MIG + 'references/conventions.md']]],
-        ['deploy-staging', [['SKILL.md', 'skills/deploy-staging/SKILL.md'], ['scripts/deploy.sh', 'skills/deploy-staging/scripts/deploy.sh']]],
+        ['deploy-staging', [['SKILL.md', 'skills/deploy-staging/SKILL.md'], ['references/smoke-checks.md', 'skills/deploy-staging/references/smoke-checks.md']]],
         ['pdf-extract', [['SKILL.md', 'skills/pdf-extract/SKILL.md'], ['scripts/extract_tables.py', 'skills/pdf-extract/scripts/extract_tables.py']]]].forEach(function (d) {
         var inner = h('ul');
         d[1].forEach(function (x) { inner.appendChild(fileRow(x[0], f[x[1]])); });
