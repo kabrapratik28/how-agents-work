@@ -1,0 +1,33 @@
+/* sandbox widget (chapter 10). Every text size is at least .82rem (13px). */
+.sb .w-sub, .sb .w-panel-title, .sb .w-status, .sb .w-pill { font-size: .82rem; }
+.sb .w-panel-title { letter-spacing: .04em; }
+.sb-reach { padding: .8rem .95rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.sb-kv { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: .3rem .8rem; margin: 0; font-size: .95rem; line-height: 1.45; }
+.sb-kv dt { color: var(--text-3); }
+.sb-kv dd { margin: 0; }
+.sb-summary { margin: .9rem 0; font-size: 1.05rem; line-height: 1.5; }
+.sb-bad { color: var(--bad); }
+.sb-mid { color: var(--mid); }
+.sb-ok { color: var(--ok); }
+.sb-grid { align-items: start; }
+.sb-group { margin: 0 0 1rem; padding: 0; border: 0; min-width: 0; }
+.sb-group:last-child { margin-bottom: 0; }
+.sb-group-title { padding: 0; font-size: .95rem; font-weight: 700; }
+.sb-hint { margin: .1rem 0 .35rem; font-size: .85rem; color: var(--text-3); }
+.sb-group .w-toggle { margin: .35rem 0; font-size: .9rem; line-height: 1.4; align-items: flex-start; }
+.sb-group .w-toggle input { margin-top: .15rem; flex: none; }
+.sb-field { margin: .45rem 0; }
+.sb-field-label { display: block; margin-bottom: .2rem; font-size: .9rem; }
+.sb-select { width: 100%; padding: .4rem .5rem; font: inherit; font-size: .9rem; color: var(--text); background: var(--bg); border: 1px solid var(--border-strong); border-radius: 6px; }
+.sb-attacks { display: grid; gap: .7rem; }
+.sb-attack { padding: .7rem .8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.sb-attack-head { margin: 0 0 .3rem; display: flex; flex-wrap: wrap; gap: .3rem .55rem; align-items: baseline; }
+.sb-attack-name { font-size: .95rem; font-weight: 650; line-height: 1.35; }
+.sb-detail { margin: 0 0 .35rem; font-size: .85rem; line-height: 1.45; color: var(--text-2); }
+.sb-note { margin: .4rem 0 0; color: var(--text-3); }
+.sb-controls { list-style: none; margin: .35rem 0 0; padding: 0; display: grid; gap: .3rem; font-size: .85rem; line-height: 1.4; }
+.sb-controls li { margin: 0; }
+.sb-effect { font-weight: 700; }
+.sb-blocks { color: var(--ok); }
+.sb-reduces { color: var(--mid); }
+@media (max-width: 640px) { .sb-kv { grid-template-columns: 1fr; gap: 0 0; } .sb-kv dd { margin-bottom: .35rem; } }

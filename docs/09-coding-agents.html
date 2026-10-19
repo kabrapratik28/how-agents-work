@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coding agents · How AI Agents Work</title>
+<meta name="description" content="Why the basic agent loop works so well for code: a few file and shell tools, fast test results, and git to undo mistakes.">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/widgets/agent-loop.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 9 · Capabilities built on the loop</p>
+    <h1>Coding agents</h1>
+    <p class="lede">Coding suits agents unusually well, because the tests say within seconds whether a change worked, and git can undo the changes that did not.</p>
+    <div class="loop-map" data-focus="all"></div>
+  </header>
+
+  <section id="why-coding">
+    <h2>Why coding fits an agent so well</h2>
+    <p>Patch runs <code>pytest</code> and sees <code>assert 200 == 401</code> two seconds later. It changes one line, runs the test again, and sees it pass. If the change had been wrong, <code>git checkout</code> would have put the file back. Now picture an agent that books flights. A booking costs money the moment it happens, nothing tells the agent quickly whether it chose well, and undoing it means a refund request.</p>
+    <p>That contrast shows what makes coding a good fit:</p>
+    <ul>
+      <li><strong>The work is text.</strong> Code, test output, and error messages are all text, which is what the model reads and writes best.</li>
+      <li><strong>The tools are cheap.</strong> Reading a file or running a command takes a few lines of ordinary code.</li>
+      <li><strong>Feedback is fast and exact.</strong> A failing test says what broke, so the model can correct itself on the next step.</li>
+      <li><strong>The real state lives in files.</strong> The repo on disk holds the truth, so nothing important depends on the model remembering it.</li>
+      <li><strong>Mistakes are cheap to undo.</strong> Git can restore any file, and a branch keeps experiments away from everyone else.</li>
+      <li><strong>Success can be checked.</strong> Your code can run the tests itself instead of trusting the model's "done".</li>
+    </ul>
+    <p>The last point has a catch: the agent can edit the tests too. The <a href="#verification">section on verification</a> shows how to keep the tests honest.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>A coding agent works like a developer at a terminal: type a command, read the output, decide on the next command.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> the developer remembers the last hour. The model remembers nothing between calls, so your code sends it the whole session every time.</p>
+    </aside>
+  </section>
+
+  <section id="primitives">
+    <h2>The handful of tools</h2>
+    <p>To fix the auth test, Patch ran the tests, read one file, edited one line, and ran the tests again. Most coding agents ship some version of the same small set of tools:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>The core tools of a coding agent</caption>
+        <thead><tr><th scope="col">Tool</th><th scope="col">What it can change</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><code>search_files</code></th><td>Nothing</td><td>Finds text across the repo</td></tr>
+          <tr><th scope="row"><code>read_file</code></th><td>Nothing</td><td>Returns a file, often one page at a time</td></tr>
+          <tr><th scope="row"><code>edit_file</code></th><td>Files in the repo (git can undo it)</td><td>Replaces exact text, or writes a whole file</td></tr>
+          <tr><th scope="row"><code>run_command</code></th><td>Depends on the command</td><td>Runs the tests, a build, a linter, or git</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The tools do three jobs. Search and read collect information, edit changes the code, and the command tool asks the environment whether the change worked. The model chooses the order, and the loop from <a href="01-agent-loop.html">chapter 1</a> keeps it going.</p>
+    <p>Most coding agents also read a project instruction file, such as <code>AGENTS.md</code>, when a run starts. For example, it might say "run the tests with <code>make test</code>" and "never edit files in <code>migrations/</code>". That spares the model from guessing how this repo works.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>A coding agent = the basic loop + tools to search, read, edit, and run commands + a test command that reports whether a change worked.</p>
+    </aside>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0) ships four tools by default: <code>read</code>, <code>bash</code>, <code>edit</code>, and <code>write</code>. Its author argues that four is enough, because models already know bash and were trained on similar read, write, and edit tools.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="interface-design">
+    <h2>Tools shaped for the model</h2>
+    <p>Suppose Patch asks to replace the text <code>expires_at &gt;= now</code>, but that text appears in two places in the file. A careful edit tool refuses and replies: "This text matches 2 places. Include more of the surrounding code." A careless tool changes the first match and reports success, so the model never learns that it may have edited the wrong line.</p>
+    <p>The tools form an interface, and the model is its only user. Small design choices change how often the model gets things right, the same way a clear API helps human callers:</p>
+    <ul>
+      <li><strong>Errors the model can act on.</strong> "No such file: auth/sesion.py" lets the model spot its typo, while a long stack trace mostly fills the context.</li>
+      <li><strong>Large files in pages.</strong> A 4,000-line file returned at once crowds out everything else, so return a window of lines and let the model ask for more.</li>
+    </ul>
+    <h3 id="edit-formats">How an edit is written down</h3>
+    <p>"Edit a file" can mean several formats, and the format decides how often an edit applies cleanly:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Common edit formats</caption>
+        <thead><tr><th scope="col">Format</th><th scope="col">The model sends</th><th scope="col">What goes wrong</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Whole file</th><td>The complete new file</td><td>Costs many tokens, and can drop unrelated code</td></tr>
+          <tr><th scope="row">Search and replace</th><td>The exact old text and the new text</td><td>Fails when the old text is not exact or not unique</td></tr>
+          <tr><th scope="row">Line numbers</th><td>A line range and the new lines</td><td>The numbers shift after the first edit</td></tr>
+          <tr><th scope="row">Diff</th><td>A patch with a few lines of context</td><td>Rejected when the context no longer matches</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Search and replace is a common default, because your code can check it before applying it. The old text must appear exactly once. If it appears zero times or twice, the tool returns an error like the one above, and the model tries again with more context.</p>
+  </section>
+
+  <section id="search">
+    <h2>Finding the right code</h2>
+    <p>Patch needs the code that checks whether a token has expired. It calls <code>search_files("expires_at")</code>, gets three matches, and reads the one in <code>auth/session.py</code>. Nothing was prepared in advance: the search ran on the files as they are now.</p>
+    <p>This style is called agentic search, because the model searches step by step, the way a developer uses grep. The other style builds an index ahead of time, often from embeddings (lists of numbers that place similar text close together), and finds code by similarity. An index can be faster on a very large repo. But it goes stale when the code changes, and code that looks similar is not always the code that matters (<a href="05-memory.html#retrieval-trace">chapter 5</a> explains why). Many coding agents search first, and add an index only when the repo is too big to search quickly.</p>
+  </section>
+
+  <section id="walkthrough">
+    <h2>A walkthrough: fix the failing auth test</h2>
+    <p>Here is the whole run for the auth test. The agent collects evidence before it edits, and collects evidence again before it stops.</p>
+    <ol class="trace">
+      <li><span class="badge user">User</span> The auth test is failing. Please fix it.</li>
+      <li><span class="badge model">Model</span> <code>run_command("pytest tests/test_auth.py -q")</code>, to see the failure first</li>
+      <li><span class="badge tool">Tool</span> exit 1: <code>test_login_expired_token: assert 200 == 401</code></li>
+      <li><span class="badge model">Model</span> <code>read_file("auth/session.py")</code></li>
+      <li><span class="badge tool">Tool</span> <code>return token.expires_at &gt;= now - timedelta(minutes=10)</code></li>
+      <li><span class="badge model">Model</span> Guess: a leftover 10-minute grace period keeps expired tokens valid. <code>edit_file(...)</code> to <code>token.expires_at &gt; now</code></li>
+      <li><span class="badge tool">Tool</span> Replaced 1 occurrence in <code>auth/session.py</code></li>
+      <li><span class="badge model">Model</span> <code>run_command("pytest tests/test_auth.py -q")</code>, to check the fix</li>
+      <li><span class="badge tool">Tool</span> exit 0: <code>12 passed</code></li>
+      <li><span class="badge model">Model</span> Final answer: the grace period caused the bug. No tool requests.</li>
+      <li><span class="badge runtime">Runtime</span> Stops the loop and checks the evidence: the last test run passed.</li>
+    </ol>
+    <p>The widget steps through the same run. Watch the model's view grow on every call. At the end, three separate things happen: the model says it is done, your code stops the loop, and your code checks the tests.</p>
+    <div class="widget" data-widget="agent-loop" data-scenarios="coding" data-title="Patch fixes the failing auth test">
+      <p class="noscript">Interactive widget. In words: Patch asks to run the tests, and your code runs them and adds the failure to the history. Patch then reads <code>auth/session.py</code>, changes the check to <code>token.expires_at &gt; now</code>, and runs the tests again. They pass. Patch replies without asking for a tool, so your code stops the loop and confirms that the last test run passed.</p>
+    </div>
+  </section>
+
+  <section id="verification">
+    <h2>Checking the work, and tests that can be gamed</h2>
+    <p>Suppose the real fix turns out to be hard. The model changes the test's last line from <code>assert status == 401</code> to <code>assert status in (200, 401)</code> and runs the suite again. Every test passes, and nothing is fixed.</p>
+    <p>So passing tests count as evidence only when the agent could not change what the tests check. The agent edits <code>tests/</code> with the same tool it uses for <code>src/</code>, which means you need guards:</p>
+    <ul>
+      <li><strong>Read the diff, not only the result.</strong> A green run that also changed a test file needs a person to look.</li>
+      <li><strong>Protect the tests.</strong> For a bug fix, block edits to <code>tests/</code> and the CI settings, or send them for review.</li>
+      <li><strong>Check the size of the change.</strong> A fix for one login bug should not touch twenty files.</li>
+      <li><strong>Keep a check the agent never saw.</strong> When you evaluate an agent, run hidden tests that it had no chance to edit.</li>
+    </ul>
+    <p>Then let your code decide "done" from the exit code of the test command, not from the model's summary. This is the split from <a href="00-llm-vs-agent.html#finished">chapter 0</a> between saying done and proving it, applied to code.</p>
+  </section>
+
+  <section id="git">
+    <h2>Git: undo, isolation, and a record</h2>
+    <p>Patch's first attempt at the fix breaks three other tests. One command, <code>git checkout auth/session.py</code>, puts the file back, and Patch tries a different idea. An agent that writes to a database has no such command.</p>
+    <p>Version control gives a coding agent three things:</p>
+    <ul>
+      <li><strong>Undo.</strong> Any change can be reverted, so trying an idea costs little.</li>
+      <li><strong>Isolation.</strong> A branch, or a separate working copy called a worktree, lets several agents work on one repo without overwriting each other.</li>
+      <li><strong>A record.</strong> The diff shows exactly what changed, which is what a reviewer reads.</li>
+    </ul>
+    <p>Git covers only the files, though. If a user rewinds the conversation to an earlier step, the files on disk stay as they are. The code is world state, separate from the message history (<a href="03-state.html#world-state">chapter 3</a>). To rewind both, your code has to save a snapshot of the files along with the conversation.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Hermes</strong> (v0.22.2) can save the working files into a separate git store before risky edits; this is off by default. Its <code>/rollback</code> command then restores the files and also undoes the last turn of the conversation, so the two stay in step.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="emergence">
+    <h2>Why a simple loop looks clever</h2>
+    <p>No line of Patch's code says "reproduce the bug before you edit". Yet in the trace, the model ran the failing test first, read one file, guessed the cause, and checked its guess. That looks like a careful developer at work, even though your code is only a loop, four tools, and a stopping rule.</p>
+    <p>The behavior comes from two sources working together. The model brings judgment, because at each step it picks a sensible next action. The environment brings correction, because after each step the test output shows whether the action helped. The model needs the feedback, since its first guess may be wrong. The feedback needs the model, since something has to read the error and decide what to try next. Over a dozen steps, these small checked choices add up to a working fix that no single call planned.</p>
+    <p>So when a coding agent gets better, the cause could be the model, the tools, the context, or the loop. <a href="18-model-vs-architecture.html">Chapter 18</a> shows how to tell which one it was.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Emergent skill = many small model decisions, each followed by real feedback, repeated until a check passes.</p>
+    </aside>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch runs the full coding loop</h2>
+    <p>Patch now runs the whole cycle on its own: it reproduces the failure, reads the code, edits it, and reruns the tests. Your code counts the task as done only when the tests pass. Nothing yet limits what else Patch can touch on your machine, so chapter 10 puts it in a sandbox.</p>
+<pre><code>+ tools = [search_files, read_file, edit_file, run_command]
++ answer = run_agent(task, tools, max_steps=30,
++                    done_check=lambda s: s.last_test == "passed")</code></pre>
+  </section>
+
+  <section id="design-checkpoint">
+    <h2>Design checkpoint: the expense agent</h2>
+    <p>A 300-person company wants an expense agent. Employees forward receipts by email or upload a photo. The agent reads the receipt, checks it against the travel and expense policy, files the expense in the finance system, and routes it for manager approval. Employees can also ask it questions such as "why was my expense rejected?"</p>
+    <p>Apply what you learned about memory, planning, subagents, and skills. The scenario is mostly a fixed sequence of steps, so look for the few places that need a model at all.</p>
+    <ol>
+      <li>What should the agent remember across runs, and who may write it?</li>
+      <li>An employee forwards 30 receipts from a conference. Does the agent need a plan? In what form?</li>
+      <li>Would subagents help? For which part, if any?</li>
+      <li>Which policy knowledge belongs in a skill, in retrieval, or in memory?</li>
+      <li>What could go wrong with remembered facts here?</li>
+    </ol>
+    <label for="cp-2-notes">Your design</label>
+    <textarea id="cp-2-notes" class="ex-notes" rows="8" placeholder="Memory and who writes it:&#10;Plan (if any):&#10;Subagents (if any):&#10;Skill vs retrieval vs memory:&#10;Risks with remembered facts:"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable design</summary>
+      <ol>
+        <li><strong>Memory.</strong> Read the cost center, manager, and home currency from the HR system each time, because that system already knows them. Remember employee preferences, such as "file rideshares under travel", only after the employee confirms them. Keep a record of past rejections so the agent can explain decisions. Never store card numbers.</li>
+        <li><strong>Plan.</strong> Thirty receipts is a batch, not a planning problem. Keep a status for each receipt in your code's state and call the model once per receipt. Then run the checks across receipts, such as daily meal limits and duplicates, in ordinary code.</li>
+        <li><strong>Subagents.</strong> Probably not. Reading each receipt is the same small job repeated, so a simple loop over receipts does it, and separate contexts would add little.</li>
+        <li><strong>Where knowledge lives.</strong> A skill holds procedures, such as filing mileage or handling foreign receipts. Retrieval finds the policy sections for this category and region. Memory holds each employee's preferences and history. The whole policy does not belong in every context.</li>
+        <li><strong>Risks.</strong> Facts go stale, for example a new manager means wrong routing. Facts can be poisoned, for example an employee says "my limit is $500" and it gets saved as true. And facts can leak, for example one employee's memory showing up in another employee's context.</li>
+      </ol>
+    </details>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>A huge output fills the context</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>A long build log, or a whole large file, comes back as one tool result and pushes the useful lines out of view.</dd>
+        <dt>How to spot it</dt><dd>Count the tokens in each tool result, and look for results far larger than the rest.</dd>
+        <dt>What to do</dt><dd>Cap each result, keep the first and last lines, save the full text to a file, and give the model the path. <a href="04-context.html#compaction">Chapter 4</a> covers this.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>A wide change for a small bug</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The model edits broadly instead of narrowing down the cause, and touches many files to chase one failure.</dd>
+        <dt>How to spot it</dt><dd>Compare the number of changed files with the size of the bug.</dd>
+        <dt>What to do</dt><dd>Ask the agent to reproduce the failure first, review the diff, and keep each task on its own branch.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Trying a failed fix again</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The model loses track of an idea that already failed, often after old steps were summarized, and tries it again.</dd>
+        <dt>How to spot it</dt><dd>Look for the same edit, or the same failing command, repeated across steps.</dd>
+        <dt>What to do</dt><dd>Keep a short list of attempts and their results in state, show it to the model, and stop after a set number of failed attempts.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Which tools the agent gets, and what each one may change.</li>
+          <li>What counts as done: which tests, and whether the agent may edit them.</li>
+          <li>How undo works: branches, worktrees, and file snapshots.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The tool code for files and the shell.</li>
+          <li>Output limits, and the files that hold full output.</li>
+          <li>Applying edits, checking exact matches, and parsing test results.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">Why is coding such a natural fit for an agent? (Q16)</p>
+      <details class="answer"><summary>Answer</summary><p>The work is text, the tools are cheap, and tests give fast, exact feedback. The real state lives in files, git can undo mistakes, and your code can check success by running the tests. The basic loop turns those properties into try, test, and revise.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">An agent reports that all tests pass. What should you check before you trust it?</p>
+      <ol class="options">
+        <li>Nothing, because a green test suite proves the bug is fixed</li>
+        <li data-correct>Whether the diff also changed the tests, and whether the change stayed small</li>
+        <li>Whether the model sounded confident in its summary</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>Read the diff. The agent can edit tests with the same tool it uses for code, so a green run with a weakened assertion is not a fix.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Patch reproduced the bug before editing, but nothing in its code tells it to. Where does that behavior come from?</p>
+      <ol class="options">
+        <li>A planner hidden in the runtime</li>
+        <li data-correct>The model choosing each step, with real test output after every action</li>
+        <li>The tools, which contain a debugging strategy</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>The model supplies the judgment at each step, and the test output corrects it after each step. A small loop with honest feedback is enough.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Give a coding agent few tools, and shape them for the model: clear errors, paged reads, and edits that must match exactly.</li>
+      <li>Let your code decide "done" from a test run, and stop the agent from editing the tests that decide it.</li>
+      <li>Use git for undo and isolation, and save file snapshots if users can rewind the conversation.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+<script defer src="assets/widgets/stepper.js"></script>
+<script defer src="assets/widgets/agent-loop.js"></script>
+</body>
+</html>
