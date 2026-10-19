@@ -23,7 +23,7 @@
     <p>Last month, Patch solved 62% of its 50-bug suite. This month it solves 74%. Three things changed in between. The provider shipped a new model version. A teammate added a <code>run_tests</code> tool that returns only the failing tests. And the compaction summary now keeps the last test output.</p>
     <p>Everyone has a favorite explanation, but nobody has evidence yet. The answer matters, because each kind of gain has a different future:</p>
     <ul>
-      <li>A better model costs you nothing, but your competitors get it too, and the next version can take it away.</li>
+      <li>A model upgrade may need little implementation work, but it can change price, token use, and speed, so measure it like any other change. Your competitors get it too.</li>
       <li>Better architecture costs engineering time, and it may stop paying off as models improve.</li>
       <li>Some gains come from spending more tokens, so they show up on the bill.</li>
     </ul>
@@ -56,12 +56,13 @@
         </tbody>
       </table>
     </div>
+    <p><strong>More compute has two separate knobs.</strong> Suppose Patch keeps failing one hard bug. You can let the model reason longer inside each call, which raises the reasoning tokens per call. Or you can make more calls, for example three attempts at the fix, with the tests picking one that passes. Both knobs raise the total cost, so log reasoning tokens and calls separately, and compare designs at the same total.</p>
     <p>A lever rarely changes only one thing. The extra changes that ride along are called confounds, because they could explain the gain instead. These are the ones that catch people most often.</p>
     <p><strong>Compute rides along with almost everything.</strong> Planning adds calls, extra agents and extra context add tokens, and a bigger step budget buys success directly. So compare designs at equal cost. Extra attempts also help only if a check can pick the one that worked.</p>
     <p><strong>Prompts and models depend on each other.</strong> A prompt tuned for one model can hurt another. A new tool brings a new description, so it is also a prompt change.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
-      <p><strong>Deep Agents</strong> (0.7.28) keeps prompt and tool-description profiles for each model. LangChain reported that these profiles lifted GPT-5.3 Codex from 33% to 53% on a curated subset of tau2-bench. Claude Opus 4.7 went from 43% to 53%, with no change to either model. This is the builder's own report on a subset it chose, so replicate it before you rely on it.</p>
+      <p><strong>Deep Agents</strong> (0.7.28) keeps prompt and tool-description profiles for selected models. LangChain reported that these profiles lifted GPT-5.3 Codex from 33% to 53% on a curated subset of tau2-bench. Claude Opus 4.7 went from 43% to 53%, with no change to either model. This is the builder's own report on a subset it chose, so replicate it before you rely on it.</p>
     </aside>
     <p><strong>More context can hurt.</strong> Irrelevant text distracts the model. A bigger window also delays compaction, so the real gain may be fewer lossy summaries.</p>
     <p><strong>Memory breaks independent trials.</strong> A reset between trials removes the very effect you want to measure, so test memory on a sequence of tasks. Watch for memory that stores the answers to eval tasks.</p>
@@ -70,8 +71,20 @@
     <p><strong>Planning tools cost tokens.</strong> They should help long tasks and cost short ones, and a stronger model may plan well without one.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
-      <p><strong>Deep Agents</strong> shipped a todo-list tool by default until version 0.7.0. Then LangChain ran three models with and without it, averaged over three runs. With the tool against without, GPT-5.6 Terra scored 25.5% vs 33.3%, Claude Opus 4.8 scored 25.5% vs 26.5%, and GLM 5.2 scored 3.9% vs 5.9%. They found "no statistically significant accuracy improvement on any model", and cost rose on two of the three, so the tool became optional.</p>
-      <p>Read it like any null result. It shows no gain on that benchmark for those models. It does not show that planning never helps, but a default that costs tokens has to earn its place.</p>
+      <p><strong>Deep Agents</strong> shipped a todo-list tool by default until version 0.7.0. LangChain then ran three models with and without the tool, averaged over three runs.</p>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Accuracy with and without the todo tool</caption>
+          <thead><tr><th scope="col">Model</th><th scope="col">With the tool</th><th scope="col">Without</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">GPT-5.6 Terra</th><td>25.5%</td><td>33.3%</td></tr>
+            <tr><th scope="row">Claude Opus 4.8</th><td>25.5%</td><td>26.5%</td></tr>
+            <tr><th scope="row">GLM 5.2</th><td>3.9%</td><td>5.9%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The tool brought no clear accuracy gain. LangChain found "no statistically significant accuracy improvement on any model", and cost rose for two of the three. So the tool left the standard default setup. The built-in OpenAI Codex profiles still add it, because their prompts tell the model to keep the todo list in sync.</p>
+      <p>This shows no gain on that benchmark for those models. It does not show that planning never helps, but a default that costs tokens has to earn its place.</p>
     </aside>
     <p><strong>Parallel agents clash on shared work.</strong> Agents that edit the same code lose details and make conflicting choices. They do best on independent subtasks.</p>
   </section>
@@ -145,20 +158,20 @@
         <details class="answer"><summary>Answer</summary><p>More agents means more compute. Until both designs spend the same, you cannot tell the design apart from the extra tokens.</p></details>
       </div>
       <div class="quiz">
-        <p class="q">Old and new model, same setup, 80 tasks, five trials each, run in the same window with the same budgets. The new model does better on 20 tasks, worse on 4, and the same on 56. The mean difference is +9 points (95% interval +5 to +13), and the traces show fewer misread test failures. What caused the gain?</p>
+        <p class="q">You swap in the new model and change nothing else. Success rises by 9 points, and the traces show fewer misread test failures. What caused the gain?</p>
         <ol class="options">
           <li data-correct>The new model, on tasks like these</li>
           <li>Insufficient evidence: run more trials</li>
           <li>The setup around the model</li>
         </ol>
-        <details class="answer"><summary>Answer</summary><p>Here the evidence is good: one change, paired trials, an interval well above zero, and a cause visible in the traces.</p></details>
+        <details class="answer"><summary>Answer</summary><p>The new model. Only the model changed, and the test was careful: 80 tasks, five trials each, run in the same window with the same budgets. The new model did better on 20 tasks and worse on 4, and the uncertainty range (+5 to +13 points) stays above zero. The traces also show how it helped.</p></details>
       </div>
     </div>
   </section>
 
   <section id="running-example">
     <h2>Running example: which lever moved Patch?</h2>
-    <p>The team reran each change on the same 50 bugs with fixed budgets, including all four combinations of model and tool. The <code>run_tests</code> tool added 9 points (interval +2 to +16). The new model added 3 points (−4 to +10), too few for this suite to tell apart from zero, so the team records it as unmeasured. The compaction fix left success flat but cut repeated test runs.</p>
+    <p>The team reran each change on the same 50 bugs with fixed budgets, including all four combinations of model and tool. The <code>run_tests</code> tool added 9 points (uncertainty range +2 to +16). The new model added 3 points (−4 to +10), which this suite cannot tell apart from zero, so the team records it as unmeasured. The compaction fix left success flat but cut repeated test runs.</p>
 <pre><code>experiment = {
     "tasks": "patch-bugs-v3",          # 50 bugs, frozen
     "trials": 3,

@@ -51,67 +51,57 @@
 
   <section id="decide-state">
     <h2>What state should exist?</h2>
-    <p>Suppose Patch crashes at step 14 of a nightly run. It can resume only if your code saved its state after step 13, outside the process. So decide what state exists: the message list alone, a typed record (status, todos, test results, approvals, cost), or checkpoints plus a log of every outside action (<a href="03-state.html">chapter 3</a>).</p>
-    <p>If nobody decides, everything lives in the message list, and nobody can say what the agent believed when it acted.</p>
+    <p>Suppose Patch crashes at step 14 of a nightly run. It can resume only if your code saved its state after step 13, outside the process. And if the state lives only in the message list, nobody can say what the agent believed when it acted. So decide what state exists. It can be the message list alone, a typed record (status, todos, test results, approvals, cost), or checkpoints plus a log of outside actions (<a href="03-state.html">chapter 3</a>).</p>
   </section>
 
   <section id="decide-context">
     <h2>What should the model see?</h2>
     <p>Suppose Patch runs <code>env</code> while debugging. If your code pastes the output into the context, the model now holds your database password. Decide the order of the context, which outputs go to files with a short preview, and when to compact. Above all, decide what never enters (<a href="04-context.html">chapter 4</a>).</p>
-    <p>If nobody decides, whole tool outputs get pasted in until the window fills.</p>
   </section>
 
   <section id="decide-memory">
     <h2>When should memory be retrieved?</h2>
-    <p>Last month, Patch fixed a flaky login test. A note about that fix helps only if it shows up when the same test fails again. So decide what is always loaded, such as a small project file, and what is fetched only when needed. Decide who may write memory too, and whether the agent's notes wait for a person's approval (<a href="05-memory.html">chapter 5</a>).</p>
-    <p>If nobody decides, old, wrong, or planted notes start steering the agent.</p>
+    <p>Last month, Patch fixed a flaky login test. A note about that fix helps when the same test fails again, but a stale or planted note misleads the model just as confidently. So decide what is always loaded, such as a small project file, and what is fetched only when needed. Decide who may write memory too, and whether the agent's notes wait for a person's approval (<a href="05-memory.html">chapter 5</a>).</p>
   </section>
 
   <section id="decide-approval">
     <h2>What actions require approval?</h2>
-    <p>Patch wants to run a migration on the shared staging database. Should it ask first? Too many gates teach people to click yes without reading. So gate by effect: actions that leave the sandbox or cannot be undone pause, and reads never do. Tie each approval to the exact call and its arguments, so a changed call needs a new approval (<a href="11-human-in-the-loop.html">chapter 11</a>).</p>
-    <p>If nobody decides, either nothing is gated or everything is. Both end with a destructive action that nobody really approved.</p>
+    <p>Patch wants to run a migration on the shared staging database. Should it ask first? Gate by effect. Actions that leave the sandbox or cannot be undone pause for a person. Reads that you already authorized, within the agent's data scope, run without asking. Sensitive sources, such as employee records or credentials, need their own rule. Keep the gates few, because too many teach people to click yes without reading. Tie each approval to the exact call and its arguments, so a changed call needs a new approval (<a href="11-human-in-the-loop.html">chapter 11</a>).</p>
   </section>
 
   <section id="decide-delegation">
     <h2>When should work be delegated?</h2>
-    <p>Patch needs to understand an unfamiliar module before it can fix a bug. A read-only helper agent can explore it and return a short summary, which keeps Patch's own context clean. But the helper costs tokens, and its summary can drop the one detail that mattered. If you use helpers, give each one a goal, tools, an output format, and a budget (<a href="07-subagents.html">chapter 7</a>).</p>
-    <p>If nobody decides, the AI may build a manager with workers because it looks capable.</p>
+    <p>Patch needs to understand an unfamiliar module before it can fix a bug. A read-only helper agent can explore it and return a short summary, which keeps Patch's own context clean. But the helper costs tokens, and its summary can drop the one detail that mattered. Left to choose, an AI coding system may build a manager with several workers, because that looks capable. If you use helpers, give each one a goal, tools, an output format, and a budget (<a href="07-subagents.html">chapter 7</a>).</p>
   </section>
 
   <section id="decide-deterministic">
     <h2>What should be deterministic?</h2>
-    <p>The expense agent must check that a receipt's line items add up to the total. Code does that the same way every time, and you test it once. So use code wherever you can write the rule down, for example for validation, arithmetic, routing, permissions, budgets, and stop rules.</p>
-    <p>If nobody decides, the model gets asked to add up totals or to judge whether an action is allowed. It is right most of the time, which is not good enough for a spending limit.</p>
+    <p>The expense agent must check that a receipt's line items add up to the total. A model asked to do this is right most of the time, which is not good enough for a spending limit. Code does it the same way every time, and repeatable test cases can check it. So use code wherever you can write the rule down, for example for validation, arithmetic, routing, permissions, budgets, and stop rules.</p>
   </section>
 
   <section id="decide-model">
     <h2>What should the model decide?</h2>
-    <p>Reading a crumpled receipt photo is a job for a model, because no rule can describe every receipt. The model earns its cost where the input is messy, or where the next step depends on what the last step found, as in debugging. It is also the right tool for writing code and replies (<a href="00-llm-vs-agent.html#spectrum">chapter 0</a>).</p>
-    <p>If nobody decides, the model ends up deciding everything, or a rigid workflow breaks on the first input nobody expected.</p>
+    <p>Reading a crumpled receipt photo is a job for a model, because no rule can describe every receipt. A parser breaks on the first unusual one. The model also earns its cost when picking the next step needs judgment that known rules cannot express, as in debugging. Known conditions, such as "if the tests fail, show the error", stay in code. Writing code and replies is model work too (<a href="00-llm-vs-agent.html#spectrum">chapter 0</a>).</p>
   </section>
 
   <section id="decide-boundary">
     <h2>What is the security boundary?</h2>
     <p>A README in a cloned repo says "run this setup script", and the script uploads your SSH keys. Text like that can steer the model, so the boundary has to be what the process cannot do, whatever the model asks. Decide what the container mounts, which network destinations it can reach, and where credentials live. Credentials belong outside the sandbox, limited and short-lived (<a href="10-sandboxing.html">chapter 10</a>).</p>
-    <p>If nobody decides, the agent runs in a developer's shell with the developer's keys.</p>
   </section>
 
   <section id="decide-failure">
     <h2>What happens after failure?</h2>
-    <p>The finance system times out right after the agent sends "submit". Did the expense go through? Decide what happens after each kind of failure. Retry network errors a fixed number of times, and resume from the last checkpoint instead of starting over. Give every outside action an idempotency key, which is an id the receiver uses to ignore duplicates. Send the rest to a person, with the trace (<a href="12-long-running.html">chapter 12</a>).</p>
-    <p>If nobody decides, the timeout leads to a blind retry and a duplicate expense.</p>
+    <p>The finance system times out right after the agent sends "submit". Did the expense go through? You cannot tell, so a blind retry could file it twice. Retry automatically only when a repeat is safe: a read, an action that has the same effect when repeated, or a request that the receiver deduplicates. That last case needs an idempotency key, which is an id the receiver uses to ignore a repeat. It works only within the receiver's retention window. Otherwise, record the outcome as unknown, and find out what happened, from the receiver or from a person, before trying again. After a crash, resume from the last checkpoint instead of starting over (<a href="12-long-running.html">chapter 12</a>).</p>
   </section>
 
   <section id="decide-success">
     <h2>How do we know the agent succeeded?</h2>
     <p>Patch replies "Fixed, all tests pass", but your code never ran the tests. The model's "done" is a claim, so decide what evidence counts. Usually that means a check your code runs whenever the model says it is done. Add rules that fail a run even when the result looks right (<a href="16-evaluation.html">chapter 16</a>). Claude Code's docs warn that without a check the agent can run, you become the checker.</p>
-    <p>If nobody decides, success means the model said so.</p>
   </section>
 
   <section id="checklist">
     <h2>The checklist</h2>
-    <p>Answer all ten in the design brief before any code exists. This is the minimum to write down for each.</p>
+    <p>Write all ten answers into the design brief. This is the minimum for each.</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>Ten decisions and the minimum answer for each</caption>
@@ -125,7 +115,7 @@
           <tr><th scope="row">Deterministic</th><td>Every rule that can be code, and the fixed workflow parts</td><td><a href="14-architectures.html">14</a></td></tr>
           <tr><th scope="row">Model</th><td>The few places that need judgment</td><td><a href="00-llm-vs-agent.html">0</a>, <a href="09-coding-agents.html">9</a></td></tr>
           <tr><th scope="row">Boundary</th><td>Mounts, network rules, credentials, outside controls</td><td><a href="10-sandboxing.html">10</a></td></tr>
-          <tr><th scope="row">Failure</th><td>Retries, idempotency keys, escalation</td><td><a href="12-long-running.html">12</a>, <a href="15-reliability.html">15</a></td></tr>
+          <tr><th scope="row">Failure</th><td>Which retries are safe, idempotency keys, what to do when the outcome is unknown</td><td><a href="12-long-running.html">12</a>, <a href="15-reliability.html">15</a></td></tr>
           <tr><th scope="row">Success</th><td>Checks at stop, invariants, the eval suite</td><td><a href="16-evaluation.html">16</a></td></tr>
         </tbody>
       </table>
@@ -144,7 +134,7 @@
           <tr><th scope="row">Must it give the same answer every time, or be audited?</th><td>Code</td></tr>
           <tr><th scope="row">Is a mistake expensive or impossible to undo?</th><td>Code decides, or the model suggests and code checks</td></tr>
           <tr><th scope="row">Is the input messy, such as free text, images, or logs?</th><td>The model reads it, and code checks the result</td></tr>
-          <tr><th scope="row">Does the next step depend on what the last step found?</th><td>The model chooses, inside limits that code enforces</td></tr>
+          <tr><th scope="row">Does choosing the next step need judgment that known rules cannot express?</th><td>The model chooses, inside limits that code enforces</td></tr>
           <tr><th scope="row">Is the output open-ended, such as prose or code?</th><td>The model writes it, and checks verify it</td></tr>
         </tbody>
       </table>
@@ -153,7 +143,7 @@
     <p>If traces show the same steps on every run, the model has a job that code should do. The opposite sign is a growing pile of special cases in code. Anthropic's guide to building agents applies the same test to the whole system. It advises the simplest design that works, which "might mean not building agentic systems at all."</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
-      <p>Deterministic vs model-driven = choosing an owner for each decision: code you test once, or a model you measure over many trials.</p>
+      <p>Deterministic vs model-driven = choosing an owner for each decision: code you check with repeatable tests, or a model you measure over many trials.</p>
     </aside>
   </section>
 
@@ -167,7 +157,7 @@
       <li><strong>An approved action runs exactly as approved.</strong> The approval record holds the call id and arguments, and your code compares them before running.</li>
       <li><strong>Tool output is capped</strong> before it enters the context, with a pointer to the full result.</li>
       <li><strong>Budgets end every run:</strong> steps, tokens, cost, and time.</li>
-      <li><strong>State is saved before side effects.</strong> The intent and its idempotency key are written before the outside call, and the receiver uses the key to drop duplicates.</li>
+      <li><strong>State is saved before side effects.</strong> The intent and its idempotency key are written before the outside call. A retry reuses that key, and only when the receiver deduplicates on it. Otherwise the action stays "outcome unknown" until someone checks.</li>
       <li><strong>Secrets stay out of the context.</strong> Your code reads credentials when it runs a tool, so the model never sees them. Anthropic's managed-agents design goes further: tokens are never reachable from the sandbox where generated code runs.</li>
       <li><strong>"Done" needs evidence.</strong> A reply with no tool calls triggers a check, not a success.</li>
     </ul>
@@ -192,15 +182,18 @@
   <section id="running-example">
     <h2>Running example: what you decided for Patch</h2>
     <p>For Patch, your decisions fit on one page: tools, budgets, context rules, four approval gates, the sandbox, one pull request per issue, and what counts as done. The AI wrote everything else, from the loop to the eval harness. Your page is what that code gets reviewed against.</p>
-<pre><code># Written by you. Enforced by code the AI wrote.
+<pre><code># Patch's final settings, as in the chapter 21 brief.
+# Written by you. Enforced by code the AI wrote.
 PATCH_DECISIONS = {
-    "budgets":  {"steps": 30, "usd": 3.00, "repeat_limit": 3},
+    "budgets":  {"steps": 30, "usd": 3.00},      # per run, in production
+    "stuck":    "same call, same failure, 3 times in a row",
     "context":  {"never": ["secrets", "env vars"], "tool_output_max": 2000},
     "memory":   {"writes": "proposals", "retrieve": "task start, by path"},
     "approval": ["open_pr", "shared_db_migration", "deploy_staging",
                  "delete_outside_repo"],
     "boundary": {"mount": "repo only", "egress": ["package registry"]},
-    "failure":  {"retries": 3, "open_pr_key": "issue key"},
+    "failure":  {"retries": 3, "retry_only": "reads, deduplicated calls",
+                 "open_pr_key": "issue key"},
     "success":  ["target test passes", "full suite passes",
                  "reviewer approves"],
 }</code></pre>
@@ -213,7 +206,7 @@ PATCH_DECISIONS = {
       <dl>
         <dt>Why it happens</dt><dd>The brief left a question open, so the AI coding system picked a plausible answer and moved on.</dd>
         <dt>How to spot it</dt><dd>Ask it to list every assumption it made, and look for rules in the enforcement map that you never wrote.</dd>
-        <dt>What to do</dt><dd>Answer the ten questions in the brief before any code exists.</dd>
+        <dt>What to do</dt><dd>Answer the ten questions in the brief first.</dd>
       </dl>
     </div>
     <div class="failure">
@@ -240,7 +233,7 @@ PATCH_DECISIONS = {
       <div class="decide">
         <h3>Decide yourself</h3>
         <ul>
-          <li>The answers to the ten questions, written before any code.</li>
+          <li>The answers to the ten questions, in writing.</li>
           <li>The invariants, and a scenario that tests each one.</li>
           <li>What counts as evidence of success.</li>
         </ul>
@@ -260,7 +253,7 @@ PATCH_DECISIONS = {
     <h2>Check yourself</h2>
     <div class="quiz">
       <p class="q">What should be deterministic versus model-driven? (Q22)</p>
-      <details class="answer"><summary>Answer</summary><p>Use code for rules you can write down, for anything that must give the same answer every time, and for expensive mistakes such as money and permissions. Use the model for messy input, for choosing steps when the path is unknown, and for writing. Where a mistake is costly, the model can suggest, but code checks before anything runs.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Use code for rules you can write down, for anything that must give the same answer every time, and for expensive mistakes such as money and permissions. Use the model for messy input, for choosing steps that need judgment no known rule can express, and for writing. Where a mistake is costly, the model can suggest, but code checks before anything runs.</p></details>
     </div>
     <div class="quiz">
       <p class="q">Permission checks live inside three of the five tool functions. What should you ask for?</p>
@@ -269,7 +262,7 @@ PATCH_DECISIONS = {
         <li data-correct>One policy check that every tool call passes through, backed by a sandbox</li>
         <li>A stronger instruction in the system prompt</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>Checks inside some tools leave other paths open. One shared check sees every call, and the sandbox catches what that check misses.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Checks inside some tools leave other paths open, so put one policy check where every call passes. The sandbox adds limits on files, processes, and network access, but it cannot judge an allowed payment or push. Rules about amounts, targets, and approvals stay in your code or in the receiving service.</p></details>
     </div>
     <div class="quiz">
       <p class="q">The AI's code saves a payment's idempotency key after the payment call returns. What can go wrong?</p>
@@ -278,7 +271,7 @@ PATCH_DECISIONS = {
         <li data-correct>A crash after the call but before the save leads to a retry with a new key, and a duplicate payment</li>
         <li>The key could be too long</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>Save the intent and the key before the call, and reuse them on retry. Then the receiver can recognize the retry and skip the duplicate.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Save the intent and the key before the call, and reuse them on retry. If the receiver deduplicates on that key, it skips the repeat. If it does not, check what happened before you retry.</p></details>
     </div>
   </section>
 

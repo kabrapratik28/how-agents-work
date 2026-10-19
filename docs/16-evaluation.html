@@ -31,7 +31,7 @@
     <p>You are also testing more than the model, because your code, its tools, and its budgets all move the score. <a href="18-model-vs-architecture.html">Chapter 18</a> shows how to tell those causes apart.</p>
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
-      <p>Grading one answer is like a unit test of a pure function. Evaluating an agent is like an integration test: you set up an environment, run a scenario, and check the end state and the logs.</p>
+      <p>Grading one answer is like a unit test. Evaluating an agent is like an integration test: you set up an environment, run a scenario, and check the end state and the logs.</p>
       <p class="breaks"><strong>Where it breaks:</strong> an integration test is meant to give the same result every time. An agent run does not, so one green run proves little.</p>
     </aside>
   </section>
@@ -132,14 +132,19 @@ def pass_hat_k(n, c, k):  # all k succeed
 
     <h3>Compare versions on the same tasks</h3>
     <p>Patch v1 and v2 each run the same 50 bugs, three trials per bug. The numbers here are made up but realistic. v1 passes 62% of its trials, and v2 passes 70%. Is v2 better?</p>
-    <p>Compare them bug by bug. On 38 bugs, both versions score the same, so those bugs say nothing about the difference. v2 does better on 9 bugs and worse on 3. The mean difference is 8 points, and a 95% interval over bugs runs from about 1 to 15 points. So v2 is probably better. But the evidence rests on 12 bugs, so read those 12 traces.</p>
-    <p>Three rules from experiment analysis carry over:</p>
+    <p>Compare them bug by bug. On 38 bugs, both versions score the same, so those bugs say nothing about the difference. v2 does better on 9 bugs and worse on 3. On average, v2 scores 8 points higher per bug.</p>
+    <p>That 8 comes from a small sample, so give it an uncertainty range. The range answers one question: if you reran the comparison on other bugs like these, how far could the result move? Here it runs from about 1 to 15 points. So v2 is probably better, but by an uncertain amount, and the evidence rests on 12 bugs. Read those 12 traces before you believe the number.</p>
+    <p>Two rules keep the range honest:</p>
     <ul>
-      <li><strong>The task is the unit.</strong> Trials of one bug are correlated, so average within each bug and get intervals by resampling bugs. Treating all 300 trials as independent coin flips gives a wrong interval of about −3 to +19 points.</li>
-      <li><strong>Pair the versions.</strong> Run both on the same bugs in the same hour. That removes the biggest source of noise, which is that some bugs are harder than others.</li>
-      <li><strong>Know what you can detect.</strong> A suite like this reliably detects a change of about 10 points. An effect a third that size needs about nine times as many bugs.</li>
+      <li><strong>Count bugs, not trials.</strong> The three trials of one bug are not independent evidence, because a hard bug tends to fail all three times. So treat each bug as one sample: average its trials first, then compare bug by bug.</li>
+      <li><strong>Pair the versions.</strong> Run both versions on the same bugs in the same hour. Bugs differ a lot in difficulty, and pairing cancels that out. A slow API afternoon also hits both.</li>
     </ul>
-    <p>Anthropic's eval guide suggests starting with 20 to 50 simple tasks drawn from real failures. Grow the suite as the gains get smaller. Also decide what "better" means before you look. For example, success must rise with an interval above zero, and no new rule violations may appear.</p>
+    <details class="reveal">
+      <summary>Optional detail: computing the range, and how many bugs you need</summary>
+      <p>One way to get the range is a bootstrap. Draw 50 bugs at random from your 50, allowing repeats, and recompute the average difference. Do that a few thousand times, and keep the middle 95% of the results. If you resample single trials instead, you treat the 300 trials as independent coin flips, and you get a wrong range of about −3 to +19 points.</p>
+      <p>A suite like this reliably detects a change of about 10 points. The range shrinks with the square root of the number of bugs, so an effect a third that size needs about nine times as many bugs. More trials per bug help less than more bugs.</p>
+    </details>
+    <p>Anthropic's eval guide suggests starting with 20 to 50 simple tasks drawn from real failures. Grow the suite as the gains get smaller. Also decide what "better" means before you look. For example, success must rise with a range that stays above zero, and no new rule violations may appear.</p>
     <h3>Where A/B-test intuition misleads</h3>
     <ul>
       <li>Samples are tiny, so only large effects show. In exchange, you can read every trace.</li>
@@ -151,7 +156,7 @@ def pass_hat_k(n, c, k):  # all k succeed
   <section id="benchmarks">
     <h2>Benchmarks and their limits</h2>
     <p>Anthropic reported that Claude Opus 4.5 first scored 42% on the CORE-Bench benchmark. After the team fixed bugs in the evaluation code and loosened the agent's setup, the same model scored 95%. So a benchmark score belongs to a model plus the code around it.</p>
-    <p>Public benchmarks are shared task sets with automatic checks. SWE-bench gives a coding agent 2,294 real GitHub issues from 12 Python repositories. Terminal-Bench 2.0 has 89 hard tasks in terminal environments. In τ-bench, an agent talks to a simulated customer, and the grader checks the database at the end.</p>
+    <p>Public benchmarks are shared task sets with automatic checks. SWE-bench gives a coding agent 2,294 real GitHub issues from 12 Python repositories. In τ-bench, an agent talks to a simulated customer, and the grader checks the database at the end.</p>
     <p>Benchmarks are useful for comparing models on fixed tasks, but they have limits:</p>
     <ul>
       <li>Some tasks are broken. SWE-bench Verified is a subset of 500 tasks that people checked for a clear issue, valid tests, and enough information to solve.</li>
@@ -182,7 +187,7 @@ def pass_hat_k(n, c, k):  # all k succeed
     "hidden_tests": ["tests/test_auth.py::test_expiry_boundary"],
     "scope": ["auth/", "tests/"],
     "trials": 3,
-    "budget": {"steps": 30, "usd": 3.00},
+    "budget": {"steps": 30, "usd": 3.00},   # same limits as production
 }
 
 def trial_ok(run, case):
@@ -262,7 +267,7 @@ def trial_ok(run, case):
         <h3>Delegate to AI</h3>
         <ul>
           <li>The harness that replays tasks in fresh containers.</li>
-          <li>Trace capture, the metrics, and the intervals.</li>
+          <li>Trace capture, the metrics, and the uncertainty ranges.</li>
           <li>Fault injection for recovery tests.</li>
         </ul>
       </div>
@@ -285,13 +290,13 @@ def trial_ok(run, case):
       <details class="answer"><summary>Answer</summary><p>pass^k, because each customer gets one attempt and every failure costs you.</p></details>
     </div>
     <div class="quiz">
-      <p class="q">Patch v1 and v2 each ran 50 bugs, three trials per bug. What should the confidence interval treat as one unit?</p>
+      <p class="q">Patch v1 and v2 each ran 50 bugs, three trials per bug. When you work out the uncertainty range, what counts as one sample?</p>
       <ol class="options">
         <li>A trial, so 150 per version</li>
         <li data-correct>A bug: average the trials per bug, then compare bug by bug</li>
         <li>A model call</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>The bug, because trials of one bug are correlated. Pooling the trials gives the wrong interval.</p></details>
+      <details class="answer"><summary>Answer</summary><p>The bug, because its three trials are not independent: a hard bug tends to fail all three times. Treating trials as separate samples gives the wrong range.</p></details>
     </div>
   </section>
 
