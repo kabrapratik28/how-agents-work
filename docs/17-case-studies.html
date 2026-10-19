@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Framework case studies · How AI Agents Work</title>
+<meta name="description" content="Hermes, Deep Agents, Pi, and other agent systems, read as answers to the design questions from the earlier chapters.">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/widgets/comparison.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 17 · Real systems</p>
+    <h1>Framework case studies</h1>
+    <p class="lede">Three real agent systems, read feature by feature as answers to the design questions from the earlier chapters.</p>
+    <div class="loop-map" data-focus="all"></div>
+  </header>
+
+  <section id="framing">
+    <h2>How to read a framework</h2>
+    <p>Take one feature. Deep Agents moves large tool results, over about 80,000 characters, into a file. The model sees only a short preview and the file's path. You could learn that as a setting to configure. But it is also an idea from <a href="04-context.html#external-state">chapter 4</a>: keep large data outside the context, and let the model fetch the part it needs. This chapter reads real systems the second way, so each feature links back to the concept it implements.</p>
+    <p>Three systems get full profiles, because they make very different choices around the same loop. Hermes Agent is a long-lived personal assistant that edits its own notes and skills between conversations. Deep Agents is a library that wraps a standard loop in layers you can configure. Pi is a small core that leaves most features to extensions. Shorter profiles of other systems follow, and <a href="17b-comparison.html">chapter 17b</a> puts everything side by side.</p>
+
+    <h3>Versions and evidence date</h3>
+    <p>The facts on this page come from research notes checked on 2026-10-19. They hold for these versions:</p>
+    <ul>
+      <li>Hermes Agent v0.22.2, released 2026-10-15.</li>
+      <li>Deep Agents: the <code>deepagents</code> Python SDK 0.7.28, released 2026-10-16.</li>
+      <li>Pi: <code>@earendil-works/pi-coding-agent</code> 1.3.0, released 2026-10-15.</li>
+    </ul>
+    <p>These projects change quickly. For example, Deep Agents changed many defaults in 0.7.0 (2026-07-29), so older tutorials describe a different system. Docs also lag behind code. The Hermes loop docs still give a default turn limit of 500, but the v0.22.2 code has no limit at all.</p>
+
+    <h3>Support levels</h3>
+    <ul class="sl-legend">
+      <li><span class="w-pill sl sl-builtin">Built in</span> Part of the system as shipped.</li>
+      <li><span class="w-pill sl sl-optional">Optional</span> Part of the system, but off until you turn it on.</li>
+      <li><span class="w-pill sl sl-ext">Extension or custom</span> Not in the core. An example extension, a plugin, or your own code adds it.</li>
+      <li><span class="w-pill sl sl-none">Not built in</span> Absent. The project's answer is something else, such as plain files or an outside container.</li>
+      <li><span class="w-pill sl sl-unknown">Unknown</span> The research did not establish it. Unknown does not mean unsupported.</li>
+    </ul>
+
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Where each course idea shows up most clearly</caption>
+        <thead><tr><th scope="col">Idea</th><th scope="col">System</th><th scope="col">What to look at</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><a href="04-context.html#prompt-caching">Context shaped by the prompt cache</a></th><td>Hermes</td><td>A system prompt frozen for the whole session</td></tr>
+          <tr><th scope="row"><a href="04-context.html#external-state">Large outputs moved to files</a></th><td>Deep Agents</td><td>Big tool results and old history saved to files the model can read back</td></tr>
+          <tr><th scope="row"><a href="03-state.html#persistent-state">State as an append-only log</a></th><td>Pi</td><td>One JSONL file per session, shaped as a tree</td></tr>
+          <tr><th scope="row"><a href="05-memory.html#structured-memory">Memory with a write policy</a></th><td>Hermes</td><td>Two capped files, written by the agent and by a review step after turns</td></tr>
+          <tr><th scope="row"><a href="06-planning.html#when-it-helps">Planning as a measured option</a></th><td>Deep Agents</td><td>A todo tool made opt-in after a test showed no gain</td></tr>
+          <tr><th scope="row"><a href="07-subagents.html#isolation">Isolated context, shared state</a></th><td>Deep Agents</td><td>Child agents start fresh but share the parent's files</td></tr>
+          <tr><th scope="row"><a href="07-subagents.html#when-not">Choosing no subagents</a></th><td>Pi</td><td>Left out of the core on purpose</td></tr>
+          <tr><th scope="row"><a href="08-skills.html#across-systems">Skills loaded on demand</a></th><td>All three</td><td>Skill names in the prompt, full text read when needed</td></tr>
+          <tr><th scope="row"><a href="11-human-in-the-loop.html#approval-gates">Approval decided by a model</a></th><td>Hermes</td><td>A second model reviews risky shell commands by default</td></tr>
+          <tr><th scope="row"><a href="10-sandboxing.html#containers">Security left to a container</a></th><td>Pi</td><td>No permission system; the docs recommend a container or VM</td></tr>
+          <tr><th scope="row"><a href="10-sandboxing.html#permission-vs-boundary">Instructions versus enforced gates</a></th><td>Claude Code</td><td><code>CLAUDE.md</code> is advice; hooks run every time</td></tr>
+          <tr><th scope="row"><a href="12-long-running.html#checkpoints">Durable execution as a layer</a></th><td>LangGraph</td><td>Saved steps, a cross-thread store, and pauses, under Deep Agents</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="hermes">
+    <h2>Hermes Agent: an assistant that edits its own notes</h2>
+    <p>Suppose you tell Hermes, in a Telegram chat, that you prefer short answers. The agent can save that preference to a small file, <code>USER.md</code>, right away. But the new line will not appear in the system prompt until your next session. Hermes builds the system prompt once per session, and changes it only when it compacts (summarizes) old history. So every request starts with the same text, and the provider's prompt cache can reuse its work (<a href="04-context.html#prompt-caching">chapter 4</a>).</p>
+    <p>Hermes Agent v0.22.2 is an open-source (MIT) application from Nous Research. The same agent core runs behind a CLI, a desktop app, an editor protocol, and an API server. A messaging gateway also connects it to 20+ chat platforms. You change most of its behavior in a configuration file, <code>config.yaml</code>.</p>
+    <figure>
+<pre class="diagram" aria-label="Hermes architecture: chat apps, the CLI, the desktop app, and the API server all feed one agent loop. The loop uses a tool registry, a SQLite session database, and a profile folder of text files. After a turn, a review step rewrites memory and skills.">
+ CLI, desktop, chat apps (20+), API server
+                    |
+                    v
+   <span class="c-runtime">One agent loop per user message</span>
+   (system prompt frozen per session)
+      |              |              |
+      v              v              v
+   <span class="c-tool">Tools</span>        <span class="c-state">state.db</span>       <span class="c-state">Profile folder</span>
+   shell on 7   sessions,      MEMORY.md,
+   backends,    messages,      USER.md,
+   MCP          search         skills/
+                                    ^
+   <span class="c-runtime">Review step</span> after turns ---------+
+   rewrites memory and skills
+</pre>
+      <figcaption>Hermes v0.22.2, simplified.</figcaption>
+    </figure>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Hermes = one tool loop + a system prompt frozen per session + a session database.</p>
+      <p>Its learning = two small memory files + a skills folder + a review step that edits them after turns.</p>
+    </aside>
+
+    <h3>The fourteen questions</h3>
+    <dl class="qa">
+      <dt>Core mental model</dt>
+      <dd>A personal assistant that lives on a server. One tool loop serves every chat front door, and between conversations the agent rewrites a notebook of memory, skills, and transcripts. Its design guide puts the cache first: "Per-conversation prompt caching is sacred." It also keeps the core small, so new abilities arrive as skills, plugins, or MCP servers.</dd>
+
+      <dt>What it calls an agent</dt>
+      <dd>A profile is the stored home of one assistant: its config, keys, memory, skills, and sessions. An agent is the running assistant that uses a profile. Subagents and the review step run the same agent class.</dd>
+
+      <dt>Loop <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Each user message starts one turn. Hermes calls the model, runs the tool calls it asks for, adds the results, and repeats until a reply contains no tool calls. Since v0.20.5 there is no step limit by default, because limits "caused silent mid-task truncation". Instead, a watchdog stops a turn after 600 seconds without progress, and guards warn when the same call keeps failing.</dd>
+
+      <dt>State <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>During a turn, the state is a list of messages. Each profile also has one SQLite database that stores every session and message, with keyword search. Memory, skills, and the agent's identity are plain text files in the profile folder.</dd>
+
+      <dt>Context construction <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>The system prompt has three parts, ordered from most to least stable. Identity and tool guidance come first, then project files such as <code>AGENTS.md</code>, then the skills list and memory. Anything that changes per call goes into the user message instead, so the cached prefix stays the same. When the conversation fills half the window (at least 75% for windows under 512K tokens), a second model summarizes the middle of the history. The old messages stay in the database, marked as compacted.</dd>
+
+      <dt>Tools <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Tools register themselves, and Hermes hides any tool whose key or binary is missing. Rarely used tools sit behind a search tool that loads their definitions on demand. In v0.22.0 that cut the desktop tool definitions from 13,367 to 6,883 tokens. The shell tool runs on 7 backends, from the local machine to Docker and remote sandbox services such as Modal.</dd>
+
+      <dt>Planning <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>There is no separate planner. A <code>todo_list</code> tool keeps a task list and puts it back into the context after compaction. In v0.22.2 the model has to find it through tool search first. The <code>/goal</code> command adds an outer loop. After each turn, another model answers done, continue, or blocked. On continue, Hermes keeps going, for up to 20 turns by default.</dd>
+
+      <dt>Subagents <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd><code>delegate_task</code> starts child agents that know nothing except the goal and the context the parent writes. They get fewer tools than the parent, for example no memory and no way to ask the user. By default they run in the background, up to 10 at once. Each result comes back later as a new message, with a summary of at most 24,000 characters.</dd>
+
+      <dt>Memory <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Two small files are always in the prompt: notes about the environment (2,200 characters) and about the user (1,375 characters). The agent writes them with a <code>memory</code> tool. A write over the limit fails, so the agent has to merge entries. Older conversations are found by keyword search over the session database, with no model call.</dd>
+
+      <dt>Skills <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>A skill is a folder with a <code>SKILL.md</code> file. The prompt lists only skill names and descriptions, and the model loads a full skill when it needs one. The agent also writes and edits skills itself, and a curator archives unused agent-written skills after 30 days.</dd>
+
+      <dt>Permissions <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Hermes checks shell commands against 110 patterns for dangerous commands. By default, a second model reviews each match and approves it, denies it, or escalates it to you. A short hardcoded blocklist and your own deny rules apply even when approvals are off. In a container backend the approval check is skipped, because the container is the boundary.</dd>
+
+      <dt>Persistence <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Hermes saves every message during the turn, so a session survives crashes and restarts. File rollback is optional: Hermes can snapshot the working folder into a hidden git store before edits. Cron jobs run as fresh agents on a schedule.</dd>
+
+      <dt>Distinctive ideas</dt>
+      <dd>It improves itself through text, not training: a review step after turns edits the memory and skill files. It also offers a ladder of autonomy. You can run one turn, a judge-driven <code>/goal</code> loop, a cron schedule, or a Kanban board. The Kanban board is a shared task queue in SQLite that several agent processes work from.</dd>
+
+      <dt>Hidden complexity</dt>
+      <dd>Hermes hides provider differences (three API formats, sign-in, retries, fallbacks), cache management, compaction, and chat-platform plumbing. It also hides its own upkeep. You never have to ask it to remember, because counters trigger the review step for you.</dd>
+    </dl>
+
+    <h3>What it teaches</h3>
+    <ul>
+      <li>Prompt caching can shape a whole context design. Hermes freezes the stable parts, puts the changing parts last, and delays prompt changes to the next session. See <a href="04-context.html#prompt-caching">chapter 4</a>.</li>
+      <li>A "self-improving" agent can be ordinary code. Counters decide when a review call runs, and that call edits text files. This is the memory write path from <a href="05-memory.html">chapter 5</a>, run automatically.</li>
+      <li>An approval gate can use a model as the approver. The gate is enforced in code, but its decisions are only as good as that model. See <a href="11-human-in-the-loop.html#approval-gates">chapter 11</a>.</li>
+    </ul>
+    <p>Sources: the <a href="https://hermes-agent.nousresearch.com/docs/">Hermes docs</a> and the <a href="https://github.com/NousResearch/hermes-agent/tree/v0.22.2">v0.22.2 code</a>. Each row in <a href="17b-comparison.html">chapter 17b</a> links its exact source.</p>
+  </section>
+
+  <section id="deep-agents">
+    <h2>Deep Agents: a standard loop wrapped in layers</h2>
+    <p>Suppose a custom search tool returns 200,000 characters. Deep Agents writes that result to a file. Only its first and last 5 lines, plus the file path, go into the conversation. The model can read more with its file tools if it needs to. The model did not ask for this. Middleware did it, meaning code that runs around every model call. Most of what Deep Agents adds works this way.</p>
+    <p>Deep Agents is LangChain's agent library. This profile covers the Python SDK, <code>deepagents</code> 0.7.28, which runs on <code>langchain</code> 1.4.6. Underneath is LangGraph, a LangChain library that stores the state of each run and can pause it. You call Deep Agents from your own code. A JavaScript version and a terminal coding agent, Deep Agents Code (<code>dcode</code>), ship as separate packages.</p>
+    <figure>
+<pre class="diagram" aria-label="Deep Agents architecture: create_deep_agent builds an ordered list of middleware and hands a model-and-tools loop to LangChain and LangGraph. Middleware wraps every call. Files go through one interface with swappable storage, and LangGraph saves checkpoints.">
+ create_deep_agent(model, tools, options)
+                    |
+                    v
+ LangChain loop, run as a LangGraph graph:
+   <span class="c-model">model</span> &lt;---&gt; <span class="c-tool">tools</span>   (ends when a reply
+                        has no tool calls)
+ <span class="c-runtime">Middleware wraps every call, in order:</span>
+   files, subagents, summarization,
+   your middleware, skills, caching,
+   memory, approval
+        |                      |
+        v                      v
+ <span class="c-state">One file interface</span>      <span class="c-state">LangGraph</span> saves
+ (state, store, disk,    each step and
+ or a sandbox)           pauses for approval
+</pre>
+      <figcaption>Deep Agents 0.7.28, simplified.</figcaption>
+    </figure>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Deep Agents = LangChain's standard loop + an ordered list of middleware + a <code>task</code> tool that runs child agents.</p>
+      <p>Its storage = one file interface over swappable backends + LangGraph checkpoints.</p>
+    </aside>
+
+    <h3>The fourteen questions</h3>
+    <dl class="qa">
+      <dt>Core mental model</dt>
+      <dd>A standard tool loop wrapped in ordered middleware, with a virtual file system as working memory and subagents as throwaway context windows. It adds no new runtime. <code>create_deep_agent()</code> assembles the middleware and hands the loop to LangChain and LangGraph.</dd>
+
+      <dt>What it calls an agent</dt>
+      <dd>The agent is the compiled LangGraph graph that <code>create_deep_agent()</code> returns: a model, tools, and middleware, run as a loop. Subagents are agents too, and any LangGraph graph with a message list can serve as one.</dd>
+
+      <dt>Loop <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>LangChain runs it: call the model, run every requested tool, and end when a reply contains no tool calls. Tool calls from one reply run in the same step. Deep Agents sets no turn limit of its own. It only sets LangGraph's recursion limit, to 9,999 steps.</dd>
+
+      <dt>State <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>State is a typed dictionary that LangGraph keeps per conversation thread. Besides the messages, it can hold the files themselves. By default, files live in the state, not on disk.</dd>
+
+      <dt>Context construction <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Since 0.7.0 the SDK ships no general system prompt. The prompt is your own text, plus extra sections from a per-model profile for some models. Middleware adds the skills list and memory files on each call, and large tool results go to files, as in the example above. At 85% of the window, Deep Agents archives the oldest messages to a file and replaces them with a summary. The model sees the summary plus recent messages, while the state keeps every original message.</dd>
+
+      <dt>Tools <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>It ships file tools (<code>ls</code>, <code>read_file</code>, <code>write_file</code>, <code>edit_file</code>, <code>glob</code>, <code>grep</code>, <code>delete</code>), a shell tool (<code>execute</code>), and <code>task</code> for subagents. <code>execute</code> appears only when the storage is a sandbox, so the default setup has no shell at all. You add your own tools as plain functions, and MCP tools through LangChain.</dd>
+
+      <dt>Planning <span class="w-pill sl sl-optional">Optional</span></dt>
+      <dd>A <code>write_todos</code> tool is opt-in since 0.7.0. LangChain removed it from the defaults after testing three models. The tool gave no significant accuracy gain, and cost went up on two of them. Even when it is on, nothing checks that the agent follows the list.</dd>
+
+      <dt>Subagents <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>The <code>task</code> tool runs a child agent while the parent waits. The child starts with only the task description and returns only its final message. But with the default storage, the child reads and writes the same files as the parent. So its context is isolated, while its state is shared. The parent runs children in parallel by calling <code>task</code> several times in one reply.</dd>
+
+      <dt>Memory <span class="w-pill sl sl-optional">Optional</span></dt>
+      <dd>Short-term memory is the thread's saved state. Long-term memory is files stored outside any one thread. You route a folder such as <code>/memories/</code> to a LangGraph store, scoped per user or per assistant. If you list an <code>AGENTS.md</code> file as memory, it goes into the prompt on every call. The agent edits it with the normal file tools.</dd>
+
+      <dt>Skills <span class="w-pill sl sl-optional">Optional</span></dt>
+      <dd>Skills use the Agent Skills format: a folder with a <code>SKILL.md</code> file. When you pass skill folders, the prompt lists each skill's name, description, and file path. The model reads the file with <code>read_file</code> when a task matches.</dd>
+
+      <dt>Permissions <span class="w-pill sl sl-optional">Optional</span></dt>
+      <dd>You name the tools that need approval with <code>interrupt_on</code>. The run pauses, and a person approves, edits, or rejects each gated call. You can also set allow, deny, or ask rules on file paths, but they cover only the built-in file tools, not the shell. The README puts it this way: "Enforce boundaries at the tool/sandbox level, not by expecting the model to self-police."</dd>
+
+      <dt>Persistence <span class="w-pill sl sl-optional">Optional</span></dt>
+      <dd>Persistence comes from LangGraph. A checkpointer is a store that saves the state after every step. If you pass one, a run can resume after a crash without redoing finished steps. It can also wait for an approval as long as needed. Files can live in the state, in a LangGraph store, on real disk, or in a sandbox.</dd>
+
+      <dt>Distinctive ideas</dt>
+      <dd>One file interface serves file tools, skills, memory, offloaded results, and archived history, so changing the storage changes all of them at once. The defaults also follow experiments: the long built-in prompt and the default todo tool were both removed after tests showed no gain.</dd>
+
+      <dt>Hidden complexity</dt>
+      <dd>It hides the order of about a dozen middleware, token counting, and history archiving. It also repairs tool calls that never got a result after an interrupt. LangGraph hides threads, checkpoints, and pausing.</dd>
+    </dl>
+
+    <h3>What it teaches</h3>
+    <ul>
+      <li>Work that must happen on every call belongs in middleware, because a tool runs only when the model chooses it. See <a href="02-tools.html#what-is-a-tool">chapter 2</a>.</li>
+      <li>Files work as overflow storage for context. Large outputs, old history, and memory all go to files that the model can read back. See <a href="04-context.html#external-state">chapter 4</a>.</li>
+      <li>An isolated context does not mean isolated state. A child agent that shares the parent's files can overwrite them. See <a href="07-subagents.html#isolation">chapter 7</a>.</li>
+    </ul>
+    <p>Sources: the <a href="https://docs.langchain.com/oss/python/deepagents/overview">Deep Agents docs</a> and the <a href="https://github.com/langchain-ai/deepagents/tree/12f70f27cc2e96ac715f4563e05b205be7adc275">deepagents code</a> read at release 0.7.28.</p>
+  </section>
+
+  <section id="pi">
+    <h2>Pi: a small core you extend</h2>
+    <p>Ask Pi to plan a large refactor. It has no plan mode and no to-do tool, so the plan goes into a file such as <code>PLAN.md</code>. You can read that file, edit it, and commit it with your code. Pi's creator prefers it that way, because file plans "can be shared across sessions, and can be versioned with your code". Much of Pi follows this pattern: a feature that other systems build in becomes a file, an extension, or a separate process.</p>
+    <p>Pi calls itself "a minimal, extensible agent harness that you can make your own". This profile covers <code>@earendil-works/pi-coding-agent</code> 1.3.0. Pi is both a CLI, <code>pi</code>, and a set of packages you can import. One package handles model access across providers, one runs the loop, and one is the coding agent. Mario Zechner created it, and Earendil acquired the project on 2026-04-08.</p>
+    <figure>
+<pre class="diagram" aria-label="Pi architecture: a terminal UI, print mode, RPC, and an SDK share one core. The coding agent adds a short prompt and four tools on top of the loop package, which sits on a provider-neutral model package. Extensions plug in more tools and gates. Sessions are an append-only JSONL tree.">
+ Terminal UI, print, JSON, RPC, SDK
+                 |
+                 v
+ <span class="c-runtime">pi-coding-agent</span>  short prompt, 4 tools,
+                  compaction, skills list
+                 |
+                 v
+ <span class="c-runtime">pi-agent-core</span>    the loop
+                 |
+                 v
+ <span class="c-model">pi-ai</span>            one API, many providers
+
+ Extensions add tools, gates, subagents,
+ and plan mode.
+ <span class="c-state">Session: an append-only JSONL tree</span>
+</pre>
+      <figcaption>Pi 1.3.0, simplified.</figcaption>
+    </figure>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Pi = one loop + four tools + a short system prompt + a session log stored as a tree + an extension API. Everything else is an extension, a file, or a separate process.</p>
+    </aside>
+
+    <h3>The fourteen questions</h3>
+    <dl class="qa">
+      <dt>Core mental model</dt>
+      <dd>A tiny agent core with a large plugin system. The goal is control over context: its creator wrote that "Exactly controlling what goes into the model's context yields better outputs". So features stay out of the core, and Pi can write its own extensions and load them with <code>/reload</code>.</dd>
+
+      <dt>What it calls an agent</dt>
+      <dd>An <code>Agent</code> object holds the model, tools, and messages, and an <code>AgentSession</code> wraps it with queued messages, compaction, and extensions. Pi's words differ from this course: a Pi "turn" is one model reply plus its tool calls, which <a href="01-agent-loop.html#vocabulary">chapter 1</a> calls a step.</dd>
+
+      <dt>Loop <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Pi streams a reply, runs its tool calls in parallel, records the results, and repeats while tool calls or queued user messages remain. You can steer mid-run: a message you type while Pi works is delivered after the current tool calls finish. A search of the source found no step limit.</dd>
+
+      <dt>State <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Each session is one append-only JSONL file. Every entry points to its parent entry, so the entries form a tree, and you can branch from any point. Even changes to the system prompt and the tool list are entries, so any branch can be replayed exactly.</dd>
+
+      <dt>Context construction <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>The system prompt is short: roughly 1,000 to 1,500 tokens with tool definitions, by a character-count estimate. Project instruction files (<code>AGENTS.md</code>) load from a global folder and every parent directory. When the context nears the window limit, minus a reserve of 16,384 tokens, a model call summarizes older entries. Pi keeps about the last 20,000 tokens word for word, and the original entries stay in the file.</dd>
+
+      <dt>Tools <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Four tools by default: <code>read</code>, <code>bash</code>, <code>edit</code>, and <code>write</code>. The creator's reason is that models already know bash and "have been trained on the read, write, and edit tools with similar input schemas". Pi cuts long output at 2,000 lines or 50 KB, and bash saves the full text to a temp file. MCP is built in since 0.99.0, but MCP tools stay hidden until the model searches for them or calls them from a script.</dd>
+
+      <dt>Planning <span class="w-pill sl sl-ext">Extension or custom</span></dt>
+      <dd>No plan mode and no to-do tool, by design. The creator wrote that "to-do lists generally confuse models more than they help". Plans live in files, and a plan-mode extension ships as an example.</dd>
+
+      <dt>Subagents <span class="w-pill sl sl-ext">Extension or custom</span></dt>
+      <dd>Not built in. The creator calls built-in subagents "a black box within a black box". Instead, he suggests asking Pi to run another copy of itself through bash. An example extension runs each subagent as a separate <code>pi</code> process with its own model, tools, and prompt.</dd>
+
+      <dt>Memory <span class="w-pill sl sl-none">Not built in</span></dt>
+      <dd>There is no memory system. What carries over between sessions is ordinary: session files you can resume, <code>AGENTS.md</code> files, files the agent writes, and skills.</dd>
+
+      <dt>Skills <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Pi follows the Agent Skills format. The prompt lists each skill's name, description, and file path. When a task matches, the model reads the <code>SKILL.md</code> file with the normal <code>read</code> tool. Skills in the project's <code>.pi/skills/</code> folder load only after you trust the project.</dd>
+
+      <dt>Permissions <span class="w-pill sl sl-ext">Extension or custom</span></dt>
+      <dd>There is no permission system, and Pi does not ask before tool calls. Its creator calls this "YOLO by default", and the docs recommend running Pi in a container or VM. The only built-in prompt asks whether to trust a project's own settings and extensions. Extensions can block or change any tool call, and if such a handler crashes, Pi blocks the call.</dd>
+
+      <dt>Persistence <span class="w-pill sl sl-builtin">Built in</span></dt>
+      <dd>Pi saves every session automatically, and you can resume it, branch it, or fork it into a new file. Branching rewinds the conversation but not the files on disk, so an example extension uses git to restore them. Resuming a turn that crashed is the goal of Pi Durable, an experimental separate package.</dd>
+
+      <dt>Distinctive ideas</dt>
+      <dd>The agent extends itself: extensions are TypeScript files that load without a build step, and Pi writes many of them. Codemode lets the model write a JavaScript script that calls tools. The script runs inside QuickJS, a small JavaScript engine with no file or network access, so only its output enters the context.</dd>
+
+      <dt>Hidden complexity, and what it leaves to you</dt>
+      <dd>Pi hides provider differences, compaction, session-tree bookkeeping, and parallel tool scheduling. It leaves the rest to you: the sandbox, approval rules, planning, subagents, and memory.</dd>
+    </dl>
+
+    <h3>What it teaches</h3>
+    <ul>
+      <li>Every tool definition costs context on every call. In 2025 Pi's creator measured one browser MCP server at 21 tools and 13.7k tokens. Pi's MCP support still hides those tools by default. See <a href="04-context.html#windows-and-budgets">chapter 4</a>.</li>
+      <li>An append-only log makes state easy to replay and branch, because nothing is overwritten. See <a href="03-state.html#persistent-state">chapter 3</a>.</li>
+      <li>When a system has no built-in gates, the security boundary has to come from outside, such as a container or VM. See <a href="10-sandboxing.html#permission-vs-boundary">chapter 10</a>.</li>
+    </ul>
+    <p>Sources: the <a href="https://github.com/earendil-works/pi/tree/73f8de8">Pi code and docs</a> at release 1.3.0, and its creator's <a href="https://mariozechner.at/posts/2025-11-30-pi-coding-agent/">design post</a> (2025-11-30).</p>
+  </section>
+
+  <section id="others">
+    <h2>Other systems, briefly</h2>
+    <h3>Claude Code: advice versus enforcement</h3>
+    <p>Claude Code is Anthropic's coding agent. Its project file, <code>CLAUDE.md</code>, loads every session, but the docs call those instructions advisory, while hooks are deterministic. A hook is a script that the runtime runs at a fixed point. For example, a Stop hook can keep a turn from ending until a check passes. That is the difference between an instruction and an enforced gate from <a href="10-sandboxing.html#permission-vs-boundary">chapter 10</a>.</p>
+    <p>Its sandbox shows what containment buys. Claude Code users approve 93% of permission prompts, which Anthropic calls "approval fatigue". Anthropic added an OS sandbox, using bubblewrap on Linux and Seatbelt on macOS. A proxy outside it lets traffic reach only approved domains. In internal use, this cut permission prompts by 84%, because a command that cannot reach much needs less review.</p>
+    <p>Sources: the <a href="https://code.claude.com/docs/en/best-practices">Claude Code best practices</a> docs page and Anthropic's <a href="https://www.anthropic.com/engineering/claude-code-sandboxing">sandboxing post</a> (2025-10-20), both checked 2026-10-19.</p>
+
+    <h3>LangGraph: the runtime under a harness</h3>
+    <p>Deep Agents leaves saving and pausing to LangGraph. LangChain describes its stack in three layers: LangGraph is the runtime, <code>create_agent</code> is the framework, and a harness such as Deep Agents sits on top. Its list of harnesses also names the Claude Agent SDK. With a checkpointer, LangGraph saves every step of a thread. A run can then resume after a crash, or wait for a person as long as needed. A store holds data across threads. This is the durable execution from <a href="12-long-running.html#checkpoints">chapter 12</a>, offered as a separate layer that a harness can build on.</p>
+    <p>Sources: LangChain's <a href="https://docs.langchain.com/oss/python/concepts/products">products page</a> and <a href="https://docs.langchain.com/oss/python/langgraph/persistence">LangGraph persistence docs</a>, checked 2026-10-19.</p>
+
+    <h3>Shared formats and protocols</h3>
+    <p>Some pieces now work across systems. <code>AGENTS.md</code> is an open format for project instructions, "used by over 60k open-source projects", and all three profiled systems can read it. In the A2A project's words, "MCP standardizes agent-to-tool communication; A2A standardizes agent-to-agent communication." Neither is an agent loop. The MCP spec also says it "cannot enforce these security principles at the protocol level", so the host program has to enforce them.</p>
+    <p>Sources: <a href="https://agents.md/">agents.md</a>, the <a href="https://modelcontextprotocol.io/specification/latest">MCP specification</a> (version 2026-07-28), and the <a href="https://a2a-protocol.org/latest/">A2A specification</a> (v1.0), checked 2026-10-19.</p>
+
+    <p>OpenHands, the OpenAI Agents SDK, PydanticAI, and smolagents build on the same primitives: a loop, tools, state, and per-call context. The course's research did not verify their details, so read them yourself with the same fourteen questions.</p>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch on each system</h2>
+    <div class="table-wrap">
+      <table class="compare patch-map">
+        <caption>Patch's needs, system by system</caption>
+        <thead><tr><th scope="col">Patch needs</th><th scope="col">Hermes</th><th scope="col">Deep Agents</th><th scope="col">Pi</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Search, read, edit, run</th><td>Built-in file tools and shell</td><td>File tools; the shell needs a sandbox backend</td><td><code>read</code>, <code>edit</code>, <code>write</code>, <code>bash</code></td></tr>
+          <tr><th scope="row">Project memory</th><td><code>AGENTS.md</code>, plus a 2,200-character notes file</td><td>An <code>AGENTS.md</code> memory file in a store</td><td>The <code>AGENTS.md</code> chain and notes in files</td></tr>
+          <tr><th scope="row">Skills: add-db-migration, deploy-staging</th><td>Skill folders; the agent may edit them</td><td>Skill folders you pass in</td><td>Skill folders in the project</td></tr>
+          <tr><th scope="row">Read-only explorer, write-free reviewer</th><td><code>delegate_task</code>; a write-free reviewer is unverified, because children get the parent's tools minus a fixed list</td><td>Declared subagents, each with its own tool list</td><td>The example subagent extension, one file per role</td></tr>
+          <tr><th scope="row">Container sandbox</th><td>The Docker shell backend</td><td>A sandbox backend, with secrets kept outside it</td><td>Run Pi in a container or VM</td></tr>
+          <tr><th scope="row">Approval for push, migrations, deploys</th><td>Model or human review of risky commands, skipped inside a container</td><td><code>interrupt_on</code> for the gated tools</td><td>A gate you write as an extension</td></tr>
+          <tr><th scope="row">Nightly runs from a queue</th><td>Cron jobs or the Kanban board</td><td>Your queue, one saved thread per issue</td><td>Your queue; Pi Durable is experimental</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Every system covers Patch's coding loop, but the gaps are in control. Hermes skips its approval check inside a container, so Patch's push gate belongs in branch protection on the Git host. Deep Agents' path rules skip the shell, so Patch gates risky commands through <code>interrupt_on</code>, and on Pi you write every gate yourself. On all three, "one PR per issue" stays Patch's own logic, because no framework deduplicates side effects for you.</p>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">Hermes saves a memory entry in the middle of a session. When does the entry first appear in the system prompt, and why? (Q7)</p>
+      <details class="answer"><summary>Answer</summary><p>At the start of the next session. The memory files go into the system prompt once per session, and changing the prompt mid-session would break the prompt cache. The file on disk changes right away.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">A Deep Agents subagent runs with the default settings. What does it share with its parent? (Q12)</p>
+      <ol class="options">
+        <li>Nothing at all</li>
+        <li>The parent's full conversation</li>
+        <li data-correct>The files, but not the conversation</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>The child's conversation starts with only the task description. But with the default storage, parent and child read and write the same files, and the child's changes stay after it ends.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">You build Patch on Pi. Where does the security boundary come from? (Q23)</p>
+      <ol class="options">
+        <li>Pi's built-in permission prompts</li>
+        <li data-correct>A container or VM you run Pi in, with gates written as extensions as an extra layer</li>
+        <li>Rules written in <code>AGENTS.md</code></li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>Pi has no permission system, and its docs say that watching the transcript does not create a boundary. An extension gate only covers the tool calls it intercepts, so containment has to come from outside.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>All three run the same loop, and they load skills and compact history in similar ways.</li>
+      <li>They differ most in defaults. Hermes builds in memory, subagents, and approvals. Deep Agents builds in subagents and makes memory and approvals options. Pi leaves all three to extensions, plain files, and outside containers.</li>
+      <li>Framework facts expire quickly, so note the version and trust the code over the docs.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

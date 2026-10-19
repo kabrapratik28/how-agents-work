@@ -1,0 +1,50 @@
+/* Comparison table (chapter 17b) and the support-level pills and question lists shared with chapter 17. */
+
+/* Support levels: the text is the label; color and border style only help scanning. */
+.w-pill.sl { vertical-align: .08em; font-size: .78rem; }
+.w-pill.sl-builtin  { --c: var(--ok);  --c-bd: var(--ok);  --c-bg: color-mix(in srgb, var(--ok) 10%, transparent); }
+.w-pill.sl-optional { --c: var(--ok);  --c-bd: var(--ok);  --c-bg: transparent; border-style: dashed; }
+.w-pill.sl-ext      { --c: var(--mid); --c-bd: var(--mid); --c-bg: transparent; border-style: dashed; }
+.w-pill.sl-none     { --c: var(--bad); --c-bd: var(--bad); --c-bg: color-mix(in srgb, var(--bad) 8%, transparent); }
+.w-pill.sl-unknown  { --c: var(--text-3); --c-bd: var(--text-3); --c-bg: transparent; border-style: dotted; }
+.w-pill.sl-form     { --c: var(--text-2); --c-bd: var(--border-strong); --c-bg: var(--bg-sunk); border-radius: 4px; }
+
+/* The fourteen questions (chapter 17) */
+dl.qa { margin: 1rem 0 1.6rem; }
+dl.qa dt { display: flex; flex-wrap: wrap; gap: .35rem .55rem; align-items: baseline; margin: 1.15rem 0 .2rem; font-weight: 700; }
+dl.qa dt:first-child { margin-top: 0; }
+dl.qa dd { margin: 0; }
+dl.qa dd ul { margin: .4rem 0 0; }
+.sl-legend { list-style: none; padding: 0; }
+.sl-legend li { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: .7rem; align-items: baseline; margin: .4rem 0; }
+.sl-legend .w-pill { text-align: center; }
+
+/* Patch mapped onto each system (chapter 17): keep cells wide enough to read; the wrapper scrolls on phones */
+table.patch-map { min-width: 40rem; }
+table.patch-map code { overflow-wrap: normal; }
+
+/* Column toggles */
+.cmp-toggles { display: flex; flex-wrap: wrap; gap: .45rem 1.1rem; align-items: center; padding: .65rem .9rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.cmp-label { font-size: .85rem; font-weight: 700; color: var(--text-2); }
+.cmp-status { margin: .45rem .2rem 0; }
+.widget[data-widget="comparison"] { margin-bottom: .6rem; }
+
+/* The table: sticky row headers so the concept stays visible while scrolling sideways */
+.cmp-wrap { margin-top: .6rem; }
+table.cmp thead th { white-space: normal; font-size: .78rem; }
+table.cmp thead th small { display: block; font-size: .78rem; letter-spacing: .02em; text-transform: none; }
+table.cmp tbody th[scope="row"], table.cmp thead th:first-child {
+  position: sticky; left: 0; z-index: 1;
+  width: 8.5rem; min-width: 8.5rem;
+  background: var(--bg);
+  box-shadow: 1px 0 0 var(--border);
+}
+table.cmp td { min-width: 15rem; }
+table.cmp td .cell { margin: .3rem 0 .25rem; }
+table.cmp td details { font-size: .84rem; color: var(--text-2); }
+table.cmp td details > summary { cursor: pointer; color: var(--link); font-weight: 600; font-size: .8rem; }
+table.cmp td details p { margin: .35rem 0; }
+@media (max-width: 640px) {
+  table.cmp tbody th[scope="row"], table.cmp thead th:first-child { width: 6.2rem; min-width: 6.2rem; font-size: .8rem; }
+  table.cmp td { min-width: 13rem; }
+}
