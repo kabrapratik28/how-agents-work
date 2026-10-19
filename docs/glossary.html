@@ -23,6 +23,10 @@
   <section id="terms">
     <h2>Terms</h2>
 
+    <article class="term" id="term-a2a"><h3>A2A (Agent2Agent protocol)</h3>
+      <p class="reduces">= a standard way for one agent to hand a task to another agent over HTTP, without seeing its insides</p>
+      <p>Each agent publishes a card that says what it can do. A piece of work is a task with an id and a status. MCP connects an agent to tools, and A2A connects agents to each other. <a href="13-communication.html">Chapter 13</a></p></article>
+
     <article class="term" id="term-agent"><h3>Agent</h3>
       <p class="reduces">= a runtime loop + a model that chooses the next action + tools + stop rules</p>
       <p>In a workflow, code decides what happens next. In an agent, the model does, within limits the runtime enforces. <a href="00-llm-vs-agent.html#spectrum">Chapter 0</a></p></article>
@@ -30,6 +34,10 @@
     <article class="term" id="term-agent-loop"><h3>Agent loop</h3>
       <p class="reduces">= while loop: build context, call model, run requested tools, append results</p>
       <p>The loop ends on a final answer, a budget, an error rule, or a person. <a href="01-agent-loop.html#observe-decide-act">Chapter 1</a></p></article>
+
+    <article class="term" id="term-agents-md"><h3>AGENTS.md</h3>
+      <p class="reduces">= a README for coding agents: build steps, test commands, and conventions, read into the context</p>
+      <p>When a repository has several, the file closest to the code being edited wins. <a href="09-coding-agents.html">Chapter 9</a></p></article>
 
     <article class="term" id="term-approval-gate"><h3>Approval gate</h3>
       <p class="reduces">= intercept a matching call + checkpoint + ask a person + resume with their decision</p>
