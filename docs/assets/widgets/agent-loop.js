@@ -314,13 +314,13 @@
     if (keys.length > 1) {
       tabs = h('div', { class: 'w-tabs', role: 'group', 'aria-label': 'Scenario' });
       keys.forEach(function (k) {
-        var b = h('button', { class: 'w-tab', type: 'button', 'aria-selected': String(k === current), 'data-key': k, text: SCENARIOS[k].label });
+        var b = h('button', { class: 'w-tab', type: 'button', 'aria-pressed': String(k === current), 'data-key': k, text: SCENARIOS[k].label });
         b.addEventListener('click', function () {
           if (k === current) return;
           current = k;
           choices = {};
           steps = build(current, choices);
-          tabs.querySelectorAll('.w-tab').forEach(function (t) { t.setAttribute('aria-selected', String(t.getAttribute('data-key') === k)); });
+          tabs.querySelectorAll('.w-tab').forEach(function (t) { t.setAttribute('aria-pressed', String(t.getAttribute('data-key') === k)); });
           paintRequest();
           stepper.reset();
         });

@@ -478,7 +478,7 @@ details.reveal[open] > summary { margin-bottom: .7rem; }
   cursor: pointer;
 }
 .w-tab:hover { color: var(--text); border-color: var(--border-strong); }
-.w-tab[aria-selected="true"] { color: var(--bg); background: var(--text); border-color: var(--text); }
+.w-tab[aria-selected="true"], .w-tab[aria-pressed="true"] { color: var(--bg); background: var(--text); border-color: var(--text); }
 .w-grid { display: grid; gap: .8rem; }
 .w-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .w-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

@@ -534,7 +534,7 @@
       var sc = SCENARIOS[current];
       tabs.querySelectorAll('.w-tab').forEach(function (t) {
         var on = t.getAttribute('data-key') === current;
-        t.setAttribute('aria-selected', String(on));
+        t.setAttribute('aria-pressed', String(on));
         t.setAttribute('aria-pressed', String(on));
       });
       intro.textContent = '';
