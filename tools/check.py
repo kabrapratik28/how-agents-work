@@ -335,6 +335,8 @@ def check_page(path, chapters, strict_links):
     for wname, line in p.widgets:
         wsrc = "assets/widgets/%s.js" % wname
         wfile = DOCS / wsrc
+        if wfile.exists():
+            errors.extend("%s: %s" % (wsrc, e) for e in check_js(wfile))
         if wsrc not in srcs:
             errors.append("line %d: widget '%s' needs <script defer src=\"%s\">" % (line, wname, wsrc))
         if not wfile.exists():
@@ -410,6 +412,19 @@ def check_page(path, chapters, strict_links):
                     "line %d: link to missing anchor %s" % (line, href))
 
     return errors, warnings, stats
+
+
+def check_js(path):
+    """Widget text is user-facing too: no em-dashes, banned words, or filler in JS files."""
+    src = path.read_text(encoding="utf-8")
+    errors = []
+    if "\u2014" in src:
+        errors.append("em-dash found %d time(s)" % src.count("\u2014"))
+    for m in sorted(set(x.lower() for x in BANNED_RE.findall(src))):
+        errors.append("banned word: %s" % m)
+    for m in sorted(set(x.lower() for x in PHRASE_RE.findall(src))):
+        errors.append("banned phrase: %s" % m)
+    return errors
 
 
 def global_checks(parts, chapters):
