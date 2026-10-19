@@ -9,7 +9,7 @@ export default function (sims, assert) {
     return p;
   };
   const sum = (blocks) => blocks.reduce((a, b) => a + b.tokens, 0);
-  const STATES = ['in', 'tool', 'missing'];
+  const STATES = ['in', 'tool', 'search', 'none'];
 
   // Shape: occupancy is the sum of what is sent; the latest user message is always sent.
   const d = run();
@@ -86,17 +86,18 @@ export default function (sims, assert) {
   assert.equal(probe(d, 'constraint').state, 'in');
   assert.equal(probe(run({ compacted: true, summary: 'careful' }), 'constraint').state, 'in');
   const lost = probe(run({ compacted: true, summary: 'careless' }), 'constraint');
-  assert.equal(lost.state, 'missing', 'a careless summary drops the constraint');
-  assert.match(lost.why, /log/, 'and the model cannot reach the log');
-  assert.equal(probe(run({ history: 20 }), 'constraint').state, 'missing', 'step 14 outside the window');
+  assert.equal(lost.state, 'none', 'a careless summary drops the constraint');
+  assert.match(lost.why, /log[\s\S]*outside the workspace/, 'and no tool can reach the log');
+  assert.equal(probe(run({ history: 20 }), 'constraint').state, 'none', 'step 14 outside the window');
   assert.equal(probe(run({ cleared: true }), 'constraint').state, 'in', 'clearing never touches user messages');
 
   // Probe: the original failure, in an old tool output.
   assert.equal(probe(d, 'failure').state, 'in');
   assert.equal(probe(cl, 'failure').state, 'tool', 'a placeholder plus read_file makes it retrievable');
   assert.equal(probe(run({ compacted: true, summary: 'careful' }), 'failure').state, 'in');
-  assert.equal(probe(run({ compacted: true, summary: 'careless' }), 'failure').state, 'missing');
-  assert.equal(probe(run({ history: 6 }), 'failure').state, 'missing');
+  // Not pointed to is not the same as unreachable: the saved log is in the workspace, so a search can find it.
+  assert.equal(probe(run({ compacted: true, summary: 'careless' }), 'failure').state, 'search');
+  assert.equal(probe(run({ history: 6 }), 'failure').state, 'search');
 
   // Probe: a fresh observation needs a tool call by design, in every configuration.
   const configs = [d, cl, allTools, dump, bare, run({ compacted: true }), run({ compacted: true, summary: 'careless' }),
@@ -107,10 +108,11 @@ export default function (sims, assert) {
 
   // Probes: instructions, skills, subagent results.
   assert.equal(probe(d, 'changelog').state, 'in');
-  assert.equal(probe(noAgents, 'changelog').state, 'missing');
+  assert.equal(probe(noAgents, 'changelog').state, 'search', 'AGENTS.md is a file a search can find');
+  assert.equal(probe(run({ agents: false, tools: 'none' }), 'changelog').state, 'none', 'searching needs a tool');
   assert.equal(probe(d, 'deploy').state, 'tool', 'the skills index is a pointer');
   assert.equal(probe(run({ skillBody: true }), 'deploy').state, 'in');
-  assert.equal(probe(run({ skillsIndex: false }), 'deploy').state, 'missing');
+  assert.equal(probe(run({ skillsIndex: false }), 'deploy').state, 'search');
   assert.equal(probe(d, 'callers').state, 'in');
   assert.equal(probe(run({ subagent: false }), 'callers').state, 'tool');
 
@@ -129,16 +131,17 @@ export default function (sims, assert) {
   // Without tool definitions the model cannot call any tool, so nothing is "one tool call away".
   const noTools = run({ tools: 'none' });
   assert.ok(!noTools.blocks.some((b) => b.key === 'tools'));
-  assert.ok(noTools.probes.every((p) => p.state !== 'tool'), 'no tools, no retrieval');
-  assert.equal(probe(noTools, 'suite').state, 'missing');
+  assert.ok(noTools.probes.every((p) => p.state === 'in' || p.state === 'none'), 'no tools, no retrieval and no search');
+  assert.equal(probe(noTools, 'suite').state, 'none');
   assert.equal(probe(noTools, 'callers').state, 'in', 'the helper report is still in view');
-  assert.equal(probe(run({ tools: 'none', subagent: false }), 'callers').state, 'missing');
+  assert.equal(probe(run({ tools: 'none', subagent: false }), 'callers').state, 'none');
 
   // "What just changed": plain sentences about the size change and every answer that changed.
   assert.match(s.describe(d, run({ subagent: false })), /helper agent/);
   assert.match(s.describe(d, run({ subagent: false })), /Now one tool call away: the callers of is_valid\(\)\./);
-  assert.match(s.describe(d, run({ compacted: true, summary: 'careless' })), /careless[\s\S]*missing/);
-  assert.match(s.describe(d, run({ tools: 'none' })), /tool list[\s\S]*missing/);
+  assert.match(s.describe(d, run({ compacted: true, summary: 'careless' })), /careless[\s\S]*out of reach/);
+  assert.match(s.describe(d, run({ tools: 'none' })), /tool list[\s\S]*out of reach/);
+  assert.match(s.describe(d, run({ agents: false })), /findable only by searching: the changelog rule/);
   assert.match(s.describe(d, run({ memory: false })), /900 tokens/);
   assert.match(s.describe(d, run({ memory: false })), /Every answer stays the same/);
   assert.match(s.describe(d, allTools), /does not fit/i);

@@ -26,7 +26,7 @@
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
       <p>The context is like the input a program gets when it starts. The caller puts together fresh arguments, settings, and data for each run.</p>
-      <p class="breaks"><strong>Where it breaks:</strong> a program reads its input by fixed rules, so data stays data. The model treats all of its input as possible guidance, so a sentence inside a tool result can change what it does. The input also has a size limit, and you pay for all of it on every call.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a program reads its input by fixed rules, so data stays data. The model treats all of its input as possible guidance, so a sentence inside a tool result can change what it does.</p>
     </aside>
   </section>
 
@@ -55,15 +55,14 @@
                  ↓
                 <span class="c-model">LLM</span>  →  reply, in space kept free for it
 </pre>
-      <figcaption>Colors mark who supplies each part, as elsewhere in the course.</figcaption>
     </figure>
-    <p>The conversation grows with every step. Tool outputs, such as file contents and test logs, usually make up most of it. The newest material goes last, right before the model starts writing.</p>
+    <p>The conversation grows with every step. Tool outputs, such as file contents and test logs, usually make up most of it. The newest material goes last.</p>
     <p id="ordering">Provider APIs fix part of this order, and you choose the rest. Putting stable parts first and changing parts last makes calls cheaper, as the section on <a href="#prompt-caching">prompt caching</a> explains.</p>
   </section>
 
   <section id="external-state">
     <h2>A lot of state, a small view</h2>
-    <p>Patch has far more information than any single call can hold:</p>
+    <p>This chapter's examples use a later Patch that already has the memory, skills, and helper agent from chapters 5, 7, and 8. It holds far more than one call can carry:</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>What Patch has vs what one call sees (illustrative)</caption>
@@ -77,7 +76,7 @@
       </table>
     </div>
     <blockquote><p>An agent can have enormous external state while exposing only a carefully selected subset to the model.</p></blockquote>
-    <p>Pointers make this practical. A pointer is a short reference to something large, such as a file path or the id of a saved tool output. It costs a few tokens, and the model can fetch the full text with a tool when it needs it. Patch already does this with long tool outputs (<a href="02-tools.html#output-limits">chapter 2</a>).</p>
+    <p>A pointer is a short reference to something large, such as a file path or the id of a saved tool output. It costs a few tokens. The model can fetch the full text with a tool when it needs it. Patch already does this with long tool outputs (<a href="02-tools.html#output-limits">chapter 2</a>).</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>Context engineering = for each call, choose what to send, in what form (full text, summary, or pointer), and in what order, within a token budget.</p>
@@ -98,16 +97,16 @@ history: 48 steps of about 1,820 tokens each     87,300
 total input                                      96,760   (86% of 112,000)
 
 room left: 15,240 tokens, enough for about 8 more steps</code></pre>
-    <p>Your code subtracts the reply first, because on many APIs the reply has to fit in the same window as the input. Most of the history is tool outputs: one full test run alone is 6,200 tokens. If Patch loaded all 40 tools from the team's catalog instead of its 6, their definitions would add 23,600 tokens. Then the call would no longer fit.</p>
-    <p>The window is the provider's hard limit. Your budget should stay well below it, because every token has a cost. The provider charges for input on every call. Because your code re-sends the history each time, the total grows roughly with the square of the number of steps (<a href="01-agent-loop.html#token-growth">chapter 1</a>).</p>
+    <p>Your code subtracts the reply first, because on many APIs the reply has to fit in the same window as the input. If Patch loaded all 40 tools from the team's catalog instead of its 6, their definitions would add 23,600 tokens. Then the call would no longer fit.</p>
+    <p>Keep your budget well below that limit. The provider charges for every input token on every call, and your code re-sends the history each time (<a href="01-agent-loop.html#token-growth">chapter 1</a>).</p>
   </section>
 
   <section id="relevance">
     <h2>Relevance: choosing what goes in</h2>
-    <p>Early in the session, Patch needed <code>tests/test_auth.py</code> to reproduce the bug. Now that the fix is in, that file matters less. The team's changelog rule matters more, because Patch is about to wrap up. So the best context changes from step to step.</p>
-    <p>For each part, ask whether it will change the model's next decision. Recent steps almost always pass that test. The plan, the changed files, and the latest test result also help, because they show where the work stands.</p>
-    <p>You can also let the model fetch what it needs. Instead of loading every file that might help, your code gives it file paths and a search tool. This saves tokens but costs extra calls, and the model may not think to look. So many designs preload what almost every step needs.</p>
-    <p>Even a fact that is in the context can be missed, and length makes this worse. A July 2025 study of 18 models found that answers grew less reliable as the input got longer, even on simple tasks. On one test, a focused prompt of about 300 tokens beat the full prompt of about 113,000 tokens for every model tested.</p>
+    <p>Early on, Patch needed <code>tests/test_auth.py</code> to reproduce the bug. Now that the fix is in, that file matters less. The team's changelog rule matters more, because Patch is about to wrap up. So the best context changes from step to step.</p>
+    <p>For each part, ask whether it will change the model's next decision. Recent steps, the plan, and the latest test result almost always pass that test, because they show where the work stands.</p>
+    <p>You can also give the model file paths and a search tool instead of loading every file that might help. This saves tokens but costs extra calls, and the model may not think to look. So many designs preload what almost every step needs.</p>
+    <p>Even a fact in the context can be missed, and length makes this worse. A July 2025 study of 18 models found that answers grew less reliable as the input got longer, even on simple tasks. On one test, a focused prompt of about 300 tokens beat the full prompt of about 113,000 tokens for every model tested.</p>
   </section>
 
   <section id="retrieval">
@@ -120,16 +119,16 @@ room left: 15,240 tokens, enough for about 8 more steps</code></pre>
       <span class="node runtime">Provenance check</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node context">Budgeted injection</span>
     </div>
-    <p>Your code limits the search to the right scope, such as this project. It finds candidates by matching words, similar meaning, or both. It keeps the few best that fit the budget, checks where each one came from, and adds them with their source. A close match can still be wrong, because a note about a retired service can match "database" and describe the wrong system. <a href="05-memory.html#retrieval-trace">Chapter 5</a> covers the details.</p>
+    <p>Your code searches within the right scope, such as this project, by matching words or meaning. It keeps the few best matches that fit the budget, checks where each came from, and adds them with their source. A close match can still be wrong: a note about a retired service can match "database" and describe the wrong system. <a href="05-memory.html#retrieval-trace">Chapter 5</a> covers the details.</p>
   </section>
 
   <section id="compaction">
     <h2>Compaction: when the window fills</h2>
-    <p>At step 48, Patch's window is 86% full. Old tool outputs, such as files it read an hour ago, take up 75,620 of those tokens. Patch rarely needs them word for word. So the cheapest fix is to swap each old output for a short placeholder that says where the full text is saved:</p>
+    <p>At step 48, Patch's window is 86% full. Old tool outputs, such as files it read an hour ago, take up 75,620 of those tokens. Patch rarely needs them word for word. So the cheapest fix is to swap each old output for a short placeholder that names the saved file:</p>
 <pre><code>before: {"tool_call_id": "call_9", "content": "FAILED tests/test_auth.py ... (1,400 tokens)"}
 after:  {"tool_call_id": "call_9", "content": "[output cleared: 1,400 tokens.
          Full text in .patch/outputs/call_9.log]"}</code></pre>
-    <p>Each tool call keeps its result, with the same id. Provider APIs generally expect every call to have a matching result, and the model can still see what it asked for. For Patch, the 42 old outputs shrink from 75,620 tokens to 1,260.</p>
+    <p>Each tool call keeps its result, with the same id. Provider APIs generally expect every call to have a matching result. The model can also still see what it asked for. For Patch, the 42 old outputs shrink from 75,620 tokens to 1,260.</p>
     <p>If that is not enough, your code asks the model to summarize the old steps. It swaps the summary in for them and keeps the newest steps word for word. The originals stay in the session log on disk:</p>
 <pre><code>before: 96,760 tokens, 86% of the 112,000 left for input
   fixed parts, the current file, the new message   9,460
@@ -147,9 +146,9 @@ session log on disk: all 48 steps, untouched</code></pre>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
-        <li><strong>Pi</strong> (1.3.0) compacts when the context passes the window minus 16,384 tokens kept for the reply. It keeps about 20,000 recent tokens word for word.</li>
-        <li><strong>Deep Agents</strong> (0.7.28) summarizes at 85% of the model's input limit. First, though, it shortens big arguments in old tool calls to 2,000 characters, which often frees enough room.</li>
-        <li><strong>Hermes</strong> (0.22.2) compacts at 50% of the window, or at least 75% for windows under 512K tokens. It clears old tool outputs first, then has a separate model summarize the middle.</li>
+        <li><strong>Pi</strong> (1.3.0) compacts when the context passes the window minus 16,384 tokens kept for the reply.</li>
+        <li><strong>Deep Agents</strong> (0.7.28) summarizes at 85% of the model's input limit, after first shortening big arguments in old tool calls.</li>
+        <li><strong>Hermes</strong> (0.22.2) compacts at 50% of the window, or at least 75% for windows under 512K tokens.</li>
       </ul>
     </aside>
   </section>
@@ -169,13 +168,13 @@ Full tool outputs: .patch/outputs/call_&lt;n&gt;.log
 Patch looked into a failing auth test. It read many files, tried a
 change in auth/tokens.py that did not help, and narrowed the problem
 down to auth/session.py.</code></pre>
-    <p>Both read well, but the careless one dropped the user's rule, the exact failure, and the paths to the saved outputs. Ten steps later a billing test fails, and Patch sees that editing a fixture file would make it pass. Nothing in its context says no. The session log still has the user's message, but that does not help. The model sees only the context, and nothing in it points to the log.</p>
+    <p>Both read well, but the careless one dropped the user's rule, the exact failure, and the paths to the saved outputs. Ten steps later a billing test fails, and Patch sees that editing a fixture file would make it pass. Nothing in its context says no. The session log still has the user's message, but that does not help. Your code keeps the log outside the repository, and Patch's tools can only reach files inside it.</p>
     <p>The model writing a summary cannot know which detail a later step will need. And each new compaction can blur the previous summary further. Four habits help. Use a fixed template with headings such as goal, rules, decisions, and files. Copy the user's messages word for word. Keep exact names, paths, and error text. And keep hard rules in a part of state that your code adds to every call, so they never depend on a summary.</p>
   </section>
 
   <section id="prompt-caching">
     <h2>Prompt caching</h2>
-    <p>Patch's next call starts with the same 94,830 tokens as its previous call. Only the newest step, the current file, and the user's message are new. A provider can save the work it did on the start of a request, which is called the prefix. It reuses that work when the next request starts with exactly the same tokens. This is prompt caching. The reused part costs less and comes back faster:</p>
+    <p>Patch's next call starts with the same 94,830 tokens as its previous call. A provider can save the work it did on such a repeated start, called the prefix. When the next request begins with exactly the same tokens, the provider reuses that work. This is prompt caching, and the reused part costs less and comes back faster:</p>
 <pre><code>                          reused   new input   reply    cost
 first call of a session        0      96,760   1,000    101
 next call (same start)    94,830       1,930   1,000     15
@@ -183,9 +182,9 @@ after an AGENTS.md edit    3,600      93,160   1,000     98
 
 prices per 1,000 tokens (illustrative): reused 0.1, new 1, reply 4
 all three calls send 96,760 input tokens</code></pre>
-    <p>In a long run, almost every call starts the same way as the one before. So caching can cut the input bill several times over.</p>
-    <p>Reuse needs an exact match, though. If you edit one early part, such as a rule in AGENTS.md, everything after it counts as new. The third row shows this. Compaction rewrites the history in the same way, so the first call after it costs more. So put stable parts first, and add new instructions at the end instead of editing early ones. Keep the tool list and the model the same within a session, too. If a rule really changes, change it anyway and accept one expensive call.</p>
-    <p>Details such as the minimum length and how long the cache lasts differ by provider, so check your provider's current documentation. This description dates from October 2026.</p>
+    <p>In a long run almost every call is like this, so caching can cut the input bill several times over.</p>
+    <p>Reuse needs an exact match, though. If you edit one early part, such as a rule in AGENTS.md, everything after it counts as new. Compaction does the same to the history. So put stable parts first, add new instructions at the end, and keep the tool list and the model the same within a session. If a rule really changes, change it anyway and accept one expensive call.</p>
+    <p>Details such as the minimum length and how long the cache lasts differ by provider. This description dates from October 2026.</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>Prompt caching = the provider reuses its work on a repeated prefix, which lowers the cost and the wait for that part. The tokens still take up room in the window.</p>
@@ -193,7 +192,7 @@ all three calls send 96,760 input tokens</code></pre>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
-        <li><strong>Hermes</strong> (0.22.2) builds its system prompt once per session, ordered from most to least stable, with memory frozen into it. A memory saved during a session reaches the prompt only in the next session, so the prefix stays the same.</li>
+        <li><strong>Hermes</strong> (0.22.2) builds its system prompt once per session, with memory frozen into it. A memory saved mid-session reaches the prompt only in the next session.</li>
         <li><strong>Pi</strong> (1.3.0) adds prompt and tool changes as new messages instead of rewriting the prompt. On models that accept such messages, the earlier prefix stays cached.</li>
       </ul>
     </aside>
@@ -202,65 +201,53 @@ all three calls send 96,760 input tokens</code></pre>
   <section id="pollution">
     <h2>Context pollution</h2>
     <p>Suppose Patch's context holds a dump of every file in <code>tests/</code>, including the fixtures the user said not to touch. It also holds the copy of <code>auth/session.py</code> that Patch read before fixing it, and forty lines from a failed attempt in <code>auth/tokens.py</code>. Each of these can pull the next step the wrong way. Text that misleads like this is called context pollution.</p>
-    <p>Pollution also includes contradictions, such as two versions of a rule. It includes prompt injection too: text in a file, web page, or tool result that someone wrote to look like an instruction. The fixes come down to choosing what goes in. Load one file instead of a folder, and drop old reads of a file after editing it. Replace a failed attempt with one line that says what was ruled out. Labeling untrusted text with its source lowers the risk of injection but does not remove it. So never rely on the context for security (<a href="10-sandboxing.html">chapter 10</a>).</p>
-    <p id="isolation">You can also move noisy work out of the main context. A subagent is a second agent loop with its own context. It can read thirty files and send back a short report, so only the report enters Patch's context (<a href="07-subagents.html#isolation">chapter 7</a>).</p>
+    <p>Pollution also includes contradictions and prompt injection. Prompt injection is text in a file, web page, or tool result written to look like an instruction. To prevent it, send one file instead of a folder, and drop old reads of a file after editing it. Replace a failed attempt with one line saying what was ruled out. Labels on untrusted text lower the risk of injection, but never rely on the context for security (<a href="10-sandboxing.html">chapter 10</a>).</p>
+    <p id="isolation">You can also move noisy work into a subagent, which is a second agent loop with its own context. It can read thirty files and send back a short report, so only the report enters Patch's context (<a href="07-subagents.html#isolation">chapter 7</a>).</p>
   </section>
 
   <section id="context-builder">
     <h2>Build a context yourself</h2>
     <p>The widget below puts you in charge of Patch's next call. Try three things:</p>
     <ol>
-      <li>Turn off the tools or the helper agent's report, and watch which answers become one tool call away or missing.</li>
+      <li>Turn off the helper agent's report, then the tools, and watch how the answers change.</li>
       <li>Drag the history slider down until the user's rule from step 14 is no longer in view.</li>
       <li>Open "Try compaction" and compact with a careless summary. Then check the question about <code>tests/fixtures/</code>.</li>
     </ol>
     <div class="widget" data-widget="context-builder">
-      <p class="noscript">Interactive widget. Without JavaScript: Patch has taken 48 steps, and its 128,000-token window keeps 16,000 tokens free for the reply. Sending everything fills 86% of the rest, and compacting brings that down to 16%. A careful summary keeps the user's rule about test fixtures, but a careless one loses it. A cached call costs about 15% of a first call, with the same number of tokens.</p>
+      <p class="noscript">Interactive widget. Without JavaScript: sending everything fills 86% of the space Patch has for input, and compacting brings that down to 16%. A careful summary keeps the user's rule about test fixtures. A careless one loses it, and no tool can reach the session log that still has it. A cached call costs about 15% of a first call, with the same number of tokens.</p>
     </div>
   </section>
 
   <section id="why-central">
     <h2>Why context is the central problem</h2>
-    <p>Most capabilities in this course work by changing what the model sees, but a few work entirely in your code:</p>
-    <div class="table-wrap">
-      <table class="compare">
-        <caption>Which capabilities act by changing the context</caption>
-        <thead><tr><th scope="col">Capability</th><th scope="col">Changes the context?</th><th scope="col">How it acts</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Memory</th><td>Yes</td><td>Your code adds saved facts to the context</td></tr>
-          <tr><th scope="row">Plans and todo lists</th><td>Yes</td><td>Your code writes the plan into each call</td></tr>
-          <tr><th scope="row">Subagent results</th><td>Yes</td><td>A short report enters the parent's history</td></tr>
-          <tr><th scope="row">Skills</th><td>Yes</td><td>A list, then the full text when needed</td></tr>
-          <tr><th scope="row">Permissions and approvals</th><td>No</td><td>Your code allows, blocks, or pauses a call. The model sees only the outcome.</td></tr>
-          <tr><th scope="row">Checkpoints</th><td>No</td><td>Your code saves state to storage</td></tr>
-          <tr><th scope="row">Scheduling and retries</th><td>No</td><td>Your code and its queues decide when runs happen</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>So much of what makes an agent capable comes down to choices about context. Much of what makes it safe and durable lives in code the model never sees. Many failures that look like model mistakes, such as a forgotten rule or a stale file, start as context problems. Before you change the prompt or the model, read the exact context of the failing call. If the needed fact was not there, the model never had it.</p>
+    <p>When Patch breaks a rule, read the exact context of the failing call before you blame the model. If the rule was not there, the model never saw it. Memory, plans, skills, and subagent reports all work by adding text to the context. Permissions, checkpoints, and scheduling work in your code, where the model never sees them. So most choices about what an agent can do are choices about what it sees.</p>
   </section>
 
   <section id="running-example">
     <h2>Running example: Patch gets a context builder</h2>
-    <p>Patch version 4 builds each context instead of sending every message. Stable parts go first, old tool outputs become placeholders, and a short task block with the user's rules goes last. Near the limit, Patch compacts with a fixed template, and its session log keeps everything. Chapter 5 gives it memory that outlasts a session.</p>
+    <p>Patch version 4 builds each context instead of sending every message. Stable parts go first, old tool outputs become placeholders, and a short task block with the user's rules goes last. Near the limit, it compacts with a fixed template, checks the size again, and stops with an error if the call still does not fit. Chapter 5 gives it memory that outlasts a session.</p>
 <pre><code># Patch v3: everything, every call
 - context = [system_prompt()] + state["messages"]
 # Patch v4: a context builder
-+ RESERVE = 16_000                                       # room for the reply
++ RESERVE = 16_000                                         # room for the reply
 + def build_context(state, window):
-+     prefix = [system_prompt(), tools(), agents_md()]     # stable, so it can be cached
-+     task = render_task(state)       # goal, user rules, files changed, last test result
-+     history = clear_old_outputs(state["messages"], keep_last=6)   # placeholders, paths
-+     ctx = prefix + [state["summary"]] + history + [task]
-+     if size(ctx) &gt; 0.8 * (window - RESERVE):
-+         state["summary"] = compact(state)              # template, user messages word for word
-+         ctx = prefix + [state["summary"]] + recent(state, 6) + [task]
-+     return ctx                                         # the session log is untouched</code></pre>
++     budget = window - RESERVE
++     prefix = [system_prompt(), tools(), agents_md()]       # stable, so it can be cached
++     task = render_task(state)          # goal, user rules, files changed, last test result
++     ctx = prefix + [state["summary"]] + clear_old_outputs(state, keep_last=6) + [task]
++     if size(ctx) &gt; 0.8 * budget:
++         state["summary"] = compact(state)                # template, user messages word for word
++         for keep in (6, 3, 1):                           # still too big? keep fewer recent steps
++             ctx = prefix + [state["summary"]] + recent(state, keep) + [task]
++             if size(ctx) &lt;= budget:
++                 return ctx
++         raise ContextTooLarge(size(ctx), budget)         # never send a call that cannot fit
++     return ctx                                           # the session log is untouched</code></pre>
   </section>
 
   <section id="design-checkpoint">
     <h2>Design checkpoint 1: the expense agent</h2>
-    <p>This checkpoint closes Part 1. Write your answers first, then compare them with one reasonable design.</p>
+    <p>This checkpoint closes Part 1. Write your answers, then compare them with one reasonable design.</p>
     <article class="exercise" id="cp-1">
       <h3>An expense agent for a 300-person company</h3>
       <p>A 300-person company wants an expense agent. Employees forward receipts by email or upload a photo. The agent reads the receipt, checks it against the travel and expense policy, files the expense in the finance system, and routes it for manager approval. Employees can also ask it questions such as "why was my expense rejected?"</p>
@@ -354,11 +341,11 @@ all three calls send 96,760 input tokens</code></pre>
         <li data-correct>No, unless something puts it back into the context</li>
         <li>Yes, if prompt caching kept the earlier prefix</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>No. The model sees only this call's context. The log could help only through a tool call, and only if something in the context points to it. Caching reuses work on text that is still sent, so it never adds anything.</p></details>
+      <details class="answer"><summary>Answer</summary><p>No. The model sees only this call's context, and Patch's tools cannot reach the session log, which lives outside the repository. Caching reuses work on text that is still sent, so it never adds anything.</p></details>
     </div>
     <div class="quiz">
       <p class="q">Why does context management matter, and what happens when the context gets too large? (Q17, Q18)</p>
-      <details class="answer"><summary>Answer</summary><p>The model can use only what is in its context, and every call has a size limit and a cost. So what you send decides what the model knows and what can mislead it. Past the window, the provider rejects the call. Before that, calls cost more and take longer. Runtimes respond by clearing old tool outputs, summarizing old history, fetching on demand instead of preloading, and moving noisy work into subagents.</p></details>
+      <details class="answer"><summary>Answer</summary><p>The model can use only what is in its context, and every call has a size limit and a cost. So what you send decides what the model knows. Past the window, the provider rejects the call, and before that, calls get slower and more expensive. Runtimes respond by clearing old tool outputs, summarizing old history, fetching on demand, and moving noisy work into subagents.</p></details>
     </div>
     <div class="quiz">
       <p class="q">Patch replaced an old test log with a placeholder that names the saved file. Can the model still get the log's details?</p>
@@ -367,16 +354,16 @@ all three calls send 96,760 input tokens</code></pre>
         <li data-correct>Yes, with one tool call, because the placeholder points to the file</li>
         <li>Only if the provider cached the log</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>Yes. The placeholder is a pointer, and <code>read_file</code> can fetch the saved file. Without the path, the details would be missing, even though the file still exists on disk.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Yes. The placeholder is a pointer, and <code>read_file</code> can fetch the saved file. Without the path, nothing would point to the file, so the model would have to think of searching for it.</p></details>
     </div>
   </section>
 
   <section id="takeaways">
     <h2>Takeaways</h2>
     <ul>
-      <li>The model works only from the context your code sends, so every fact it needs must be there or one tool call away.</li>
+      <li>The model works only from the context your code sends. Every fact it needs must be there or one tool call away.</li>
       <li>Choose what goes in at every step by asking whether each part will change the model's next decision.</li>
-      <li>When the window fills, clear old tool outputs first, then summarize with a template that keeps the user's rules word for word.</li>
+      <li>When the window fills, clear old tool outputs first. Then summarize with a template that keeps the user's rules word for word.</li>
     </ul>
   </section>
   <section id="going-deeper">

@@ -49,6 +49,7 @@
 .cb-verdict.ok { color: var(--ok); }
 .cb-verdict.mid { color: var(--mid); }
 .cb-verdict.bad { color: var(--bad); }
+.cb-verdict.far { color: var(--mid); border-style: dashed; }
 .cb-stale { margin: .3rem 0 0; padding-left: .55rem; border-left: 3px solid var(--mid); font-size: .9rem; line-height: 1.45; color: var(--text-2); }
 
 /* sections below the first screen */

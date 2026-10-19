@@ -93,12 +93,15 @@
     constraint: "the user's rule about tests/fixtures/", failure: 'the original failure', suite: 'whether the suite passes',
     changelog: 'the changelog rule', deploy: 'the deploy steps', callers: 'the callers of is_valid()'
   };
-  var STATE_WORD = { in: 'in view', tool: 'one tool call away', missing: 'missing' };
+  var STATE_WORD = { in: 'in view', tool: 'one tool call away', search: 'findable only by searching', none: 'out of reach' };
   var NO_TOOL_WHY = {
-    failure: "Step 1's placeholder names the saved file, but no tools are sent, so the model cannot read it.",
-    suite: 'No test has run since the edit at step 47, and no tools are sent, so the model cannot run one.',
-    deploy: 'The skills list names the deploy skill, but no tools are sent, so the model cannot read it.',
-    callers: 'There is no helper report, and no tools are sent, so the model cannot search.'
+    'failure:tool': "Step 1's placeholder names the saved file, but no tools are sent, so the model cannot read it.",
+    'failure:search': 'The full test log is saved in the workspace, but no tools are sent, so the model cannot look for it.',
+    'suite:tool': 'No test has run since the edit at step 47, and no tools are sent, so the model cannot run one.',
+    'changelog:search': 'AGENTS.md is not sent, and no tools are sent, so the model cannot read it.',
+    'deploy:tool': 'The skills list names the deploy skill, but no tools are sent, so the model cannot read it.',
+    'deploy:search': 'Nothing points to the deploy skill, and no tools are sent, so the model cannot look for it.',
+    'callers:tool': 'There is no helper report, and no tools are sent, so the model cannot search.'
   };
 
   function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
@@ -185,13 +188,14 @@
       return { id: 'call_' + s, step: s, result: ph ? 'placeholder' : 'full', ref: ph ? '.patch/outputs/call_' + s + '.log' : null };
     });
 
-    // Evidence rules: "in" when a sent block holds the fact; "tool" when a sent tool can fetch it and something sent
-    // points to it (a path, a skills list entry, or a test run that has not happened yet); otherwise "missing".
-    // With no tool list, no tool can be called, so "tool" turns into "missing".
+    // Evidence rules. "in": a sent block holds the fact. "tool": a sent tool can fetch it, and something sent points to
+    // it (a path, a skills list entry, or a test run that has not happened yet). "search": nothing sent points to it,
+    // but it sits in the workspace, so a search could find it. "none": no tool the model has can reach it. Patch's tools
+    // only reach the workspace, and the session log lives outside it. With no tool list, nothing can be fetched.
     var probes = [];
     var noTools = c.tools === 'none';
     var p = function (key, q, state, why, stale) {
-      if (noTools && state === 'tool') { state = 'missing'; why = NO_TOOL_WHY[key]; }
+      if (noTools && (state === 'tool' || state === 'search')) { why = NO_TOOL_WHY[key + ':' + state]; state = 'none'; }
       probes.push({ key: key, q: q, state: state, why: why, stale: stale || null });
     };
     var careful = c.compacted && c.summary === 'careful';
@@ -199,15 +203,15 @@
     var cq = 'If a billing test fails, may Patch edit tests/fixtures/tokens.json?';
     if (inView(STEP.constraint)) p('constraint', cq, 'in', 'No. The user said so at step 14, and that message is still sent.');
     else if (careful) p('constraint', cq, 'in', "No. The careful summary quotes the user's rule word for word.");
-    else if (c.compacted) p('constraint', cq, 'missing', 'The careless summary dropped the rule. The session log still has it, but the model cannot see the log.');
-    else p('constraint', cq, 'missing', 'Step 14 is no longer sent, and no summary covers it. Only the session log has the rule now.');
+    else if (c.compacted) p('constraint', cq, 'none', 'The careless summary dropped the rule. Only the session log still has it, and your code keeps that log outside the workspace, where no tool can reach it.');
+    else p('constraint', cq, 'none', 'Step 14 is no longer sent, and no summary covers it. Only the session log has the rule now, and it sits outside the workspace, where no tool can reach it.');
 
     var fq = 'What was the original failure? The PR summary needs it.';
     if (full(STEP.failure)) p('failure', fq, 'in', "Step 1's test output is still sent.");
     else if (placeholder(STEP.failure)) p('failure', fq, 'tool', "Step 1's placeholder names the saved file, so one read_file call brings it back.");
     else if (careful) p('failure', fq, 'in', 'The careful summary quotes the failing test.');
-    else if (c.compacted) p('failure', fq, 'missing', 'The careless summary says only "a failing auth test", and nothing points to the details.');
-    else p('failure', fq, 'missing', 'Step 1 is no longer sent, and no summary covers it.');
+    else if (c.compacted) p('failure', fq, 'search', 'The careless summary says only "a failing auth test". The full log is still saved in the workspace, so a search could find it, but nothing tells the model to look.');
+    else p('failure', fq, 'search', 'Step 1 is no longer sent. Its full output is still saved in the workspace, so a search could find it, but nothing points to it.');
 
     p('suite', 'Does the full test suite pass with the latest edit?', 'tool',
       'No test has run since the edit at step 47, so only a new test run can answer.',
@@ -215,12 +219,12 @@
 
     var lq = 'Does this fix need a changelog entry?';
     if (c.agents) p('changelog', lq, 'in', 'Yes. AGENTS.md says every fix needs a line in CHANGELOG.md.');
-    else p('changelog', lq, 'missing', 'That rule is only in AGENTS.md, which is not sent, and nothing tells the model to look.');
+    else p('changelog', lq, 'search', 'AGENTS.md is not sent, but it is a file in the repository, so a search could find the rule if the model thinks to look.');
 
     var dq = 'What are the steps to deploy to staging?';
     if (c.skillBody) p('deploy', dq, 'in', 'The deploy steps are loaded.');
     else if (c.skillsIndex) p('deploy', dq, 'tool', 'The skills list names the deploy skill and its file, so one read_file call loads the steps.');
-    else p('deploy', dq, 'missing', 'With no skills list, nothing tells the model that the steps exist.');
+    else p('deploy', dq, 'search', 'With no skills list, nothing points to the deploy skill, but its file is in the repository, so a search could find it.');
 
     var kq = 'What calls is_valid(), across the whole repo?';
     if (c.subagent) p('callers', kq, 'in', "The helper agent searched the whole repo, and its report lists every caller.");
@@ -337,7 +341,7 @@
 
     var changed = next.probes.filter(function (q, i) { return q.state !== prev.probes[i].state; });
     var answers = '';
-    ['missing', 'tool', 'in'].forEach(function (state) {
+    ['none', 'search', 'tool', 'in'].forEach(function (state) {
       var topics = changed.filter(function (q) { return q.state === state; }).map(function (q) { return TOPIC[q.key]; });
       if (topics.length) answers += ' Now ' + STATE_WORD[state] + ': ' + joinAnd(topics) + '.';
     });
@@ -351,7 +355,8 @@
   var VERDICT = {
     in: { text: 'In view', cls: 'ok' },
     tool: { text: 'One tool call away', cls: 'mid' },
-    missing: { text: 'Missing', cls: 'bad' }
+    search: { text: 'Only by searching', cls: 'far' },
+    none: { text: 'Out of reach', cls: 'bad' }
   };
 
   AC.widgets['context-builder'] = function (root) {
@@ -389,7 +394,7 @@
       h('p', { class: 'w-sub', text: 'Numbers are illustrative.' })));
     var body = h('div', { class: 'w-body' });
     frame.appendChild(body);
-    body.appendChild(h('p', { class: 'cb-scene', text: 'Patch has taken 48 steps on a bug fix, and the user now writes:' }));
+    body.appendChild(h('p', { class: 'cb-scene', text: 'A later Patch, with the memory, skills, and helper agent that chapters 5 to 8 add, has taken 48 steps on a bug fix. The user now writes:' }));
     body.appendChild(h('p', { class: 'cb-request' }, h('span', { class: 'badge user', text: 'User' }), LATEST));
 
     /* first screen: what the model sees */
@@ -413,7 +418,7 @@
       h('p', { class: 'cb-panel-title', text: 'Choose what the model sees' }),
       check('System prompt', 'your rules for the model', function () { return cfg.system; }, function (on) { cfg.system = on; }),
       h('div', { class: 'cb-slider' }, histLabel, slider),
-      check('Tools', function () { return cfg.tools === 'all' ? 'all 40 tools (set under More options)' : 'the 6 tools Patch can use'; },
+      check('Tools', function () { return cfg.tools === 'all' ? 'all 40 tools (set under More options)' : 'the 6 tools this Patch can use, which only reach the repository'; },
         function () { return cfg.tools !== 'none'; }, function (on) { cfg.tools = on ? 'core' : 'none'; }),
       check('Memory', '3 saved facts about the project', function () { return cfg.memory; }, function (on) { cfg.memory = on; }),
       check('Files', function () { return cfg.files === 'dump' ? 'every file in auth/ and tests/ (set under More options)' : 'auth/session.py, the file being fixed'; },
@@ -425,9 +430,9 @@
     var probeList = h('ul', { class: 'cb-probes' });
     var probes = h('div', { class: 'cb-panel' },
       h('p', { class: 'cb-panel-title', text: 'What the model can answer right now' }),
-      h('p', { class: 'cb-note', text: 'In view: the answer is in the context. One tool call away: a tool can fetch it, and something in the context points to it. Missing: neither.' }),
+      h('p', { class: 'cb-note', text: 'In view: the answer is in the context. One tool call away: a tool can fetch it, and something in the context points to it. Only by searching: nothing points to it, but a search could find it if the model thinks to look. Out of reach: no tool the model has can get it.' }),
       probeList,
-      h('p', { class: 'cb-note', text: 'Being in view does not guarantee that the model uses a fact well. Missing guarantees that it cannot.' }));
+      h('p', { class: 'cb-note', text: 'Being in view does not guarantee that the model uses a fact well. Out of reach guarantees that it cannot.' }));
     body.appendChild(h('div', { class: 'cb-grid' }, toggles, probes));
 
     /* below the first screen: labeled sections, closed until the reader opens them */
@@ -556,8 +561,8 @@
     }
 
     function paintKeeps(r) {
-      keeps.textContent = 'Your code keeps all ' + r.log.steps + ' steps (' + fmt(r.log.tokens) + ' tokens) and every full tool output in its session log' +
-        (r.log.compactions ? ', plus the summary as a new entry' : '') + '. None of it reaches the model unless it is in the list below.';
+      keeps.textContent = 'Your code keeps all ' + r.log.steps + ' steps (' + fmt(r.log.tokens) + ' tokens) in a session log outside the workspace' +
+        (r.log.compactions ? ', plus the summary as a new entry' : '') + ', where none of the tools can reach it. Full tool outputs are also saved in .patch/outputs/ inside the workspace, where the tools can read them. Only the blocks below reach the model.';
       blockList.textContent = '';
       var boundary = false;
       r.blocks.forEach(function (b, i) {

@@ -18,9 +18,9 @@
   // One store. Pinned facts render into the memory file; the rest is searched per request.
   var STORE = [
     { id: 'user-ts', label: 'TypeScript preference', type: 'fact', key: 'user.frontend', value: 'TypeScript', text: 'User prefers TypeScript for front-end code.', scope: 'user', source: 'user, in chat', verified: '2026-03-02', status: 'accepted', pinned: true, tokens: 12 },
-    { id: 'db-engine', label: 'PostgreSQL fact', type: 'fact', key: 'db.engine', value: 'PostgreSQL 15', text: 'Project uses PostgreSQL 15.', scope: 'project', source: 'config/settings.py', verified: '2026-10-02', status: 'accepted', pinned: true, tokens: 10 },
+    { id: 'db-engine', label: 'PostgreSQL fact', type: 'fact', key: 'db.engine', value: 'PostgreSQL 15', text: 'Project uses PostgreSQL 15.', scope: 'project', source: 'infra/db.tf', verified: '2026-10-02', status: 'accepted', pinned: true, tokens: 10 },
     { id: 'deploy-aws', label: 'AWS fact', type: 'fact', key: 'deploy.platform', value: 'AWS', text: 'Deployment platform is AWS (ECS).', scope: 'project', source: 'infra/main.tf', verified: '2026-09-12', status: 'accepted', pinned: true, tokens: 10 },
-    { id: 'py-version', label: 'Python version fact', type: 'fact', key: 'python.version', value: 'Python 3.11', text: 'The API runs on Python 3.11.', scope: 'project', source: 'pyproject.toml', verified: '2026-04-10', status: 'accepted', pinned: true, tokens: 10 },
+    { id: 'py-version', label: 'Python version fact', type: 'fact', key: 'python.version', value: 'Python 3.11', text: 'The API runs on Python 3.11.', scope: 'project', source: 'Dockerfile', verified: '2026-04-10', status: 'accepted', pinned: true, tokens: 10 },
     { id: 'conv-endpoints', label: 'endpoint rule', type: 'fact', key: 'conv.endpoints', text: 'New endpoints need a rate limit and an audit-log entry.', scope: 'project', source: 'review on PR #212', verified: '2026-09-18', status: 'accepted', tokens: 35 },
     { id: 'email-ses', label: 'email fact', type: 'fact', key: 'email.provider', text: 'Transactional email goes through AWS SES via notify.send_email().', scope: 'project', source: 'notify/email.py', verified: '2025-11-02', status: 'accepted', tokens: 40 },
     { id: 'ep-reset', label: 'reset-token note', type: 'episode', text: 'Jun 2026 run: review rejected reusable password-reset tokens. Make them single-use, valid for 30 minutes.', scope: 'project', source: 'run trace 2026-06-14', verified: '2026-06-14', status: 'accepted', tokens: 90 },
@@ -109,16 +109,17 @@
 
   // The write path: what one run asked to remember, and the sources the runtime trusts per key.
   var PROPOSALS = [
-    { id: 'p1', key: 'test.fast', value: 'make test-fast', text: 'Run make test-fast for quick auth checks. The full suite takes 12 minutes.', scope: 'project', source: 'commands run in this session', at: TODAY },
+    { id: 'p1', key: 'test.fast', value: 'test-fast', text: 'Run make test-fast for quick auth checks. The full suite takes 12 minutes.', scope: 'project', source: 'commands run in this session', at: TODAY, unsupported: 'the claim about 12 minutes' },
     { id: 'p2', key: 'db.engine', value: 'MySQL', text: 'The project database is MySQL.', scope: 'project', source: 'read services/legacy-analytics/config.yml', at: TODAY },
-    { id: 'p3', key: 'python.version', value: 'Python 3.12', text: 'The API runs on Python 3.12.', scope: 'project', source: 'a CI log line', at: TODAY },
+    { id: 'p3', key: 'python.version', value: 'Python 3.12', text: 'The API was upgraded to Python 3.12 last week.', scope: 'project', source: 'a CI log line', at: TODAY },
     { id: 'p4', key: 'deploy.window', value: 'not on Fridays', text: 'Staging deploys are frozen on Fridays.', scope: 'project', source: 'user: "I think we freeze on Fridays?"', at: TODAY },
     { id: 'p5', key: 'staging.db_password', text: 'Staging database password: ••••••••', scope: 'project', source: 'read .env.staging', at: TODAY, secret: true }
   ];
+  // What each trusted source actually shows (says), the value that supports, and the fact your code may store.
   var AUTHORITY = {
-    'test.fast': { source: 'Makefile', value: 'make test-fast', says: 'defines a test-fast target' },
-    'db.engine': { source: 'config/settings.py', value: 'PostgreSQL 15', says: 'DATABASE_URL = "postgresql://..."' },
-    'python.version': { source: 'pyproject.toml', value: 'Python 3.12', says: 'requires-python = ">=3.12"' }
+    'test.fast': { source: 'Makefile', says: 'test-fast: pytest tests/auth tests/unit', value: 'test-fast', fact: 'make test-fast runs only the auth and unit tests.' },
+    'db.engine': { source: 'infra/db.tf', says: 'engine = "postgresql", version = "15"', value: 'PostgreSQL 15', fact: 'Project uses PostgreSQL 15.' },
+    'python.version': { source: 'Dockerfile', says: 'FROM python:3.12-slim', value: 'Python 3.12', fact: 'The API runs on Python 3.12.' }
   };
 
   function clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
@@ -129,6 +130,7 @@
     });
   }
   var WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  function src(name) { return /^[A-Z][a-z]+file$/.test(name) ? 'the ' + name : name; }   // "the Makefile", "infra/db.tf"
   function count(n, one, many) { return (WORDS[n] || String(n)) + ' ' + (n === 1 ? one : many); }
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
@@ -240,27 +242,31 @@
       out.checks.conflict = 'with "' + cur.text + '"';
     }
     if (!cur && auth && auth.value === p.value) {
-      store.push({ id: p.key.replace(/\W+/g, '-'), label: 'new fact', type: 'fact', key: p.key, value: p.value, text: p.text, scope: p.scope, source: auth.source, verified: TODAY, status: 'accepted', tokens: 25 });
+      // Store only what the source shows, built from the evidence, never the proposal's own wording.
+      store.push({ id: p.key.replace(/\W+/g, '-'), label: 'new fact', type: 'fact', key: p.key, value: auth.value, text: auth.fact, scope: p.scope, source: auth.source, verified: TODAY, status: 'accepted', tokens: 25 });
       p.status = out.decision = 'accepted';
+      p.partial = Boolean(p.unsupported);
       out.evidence = auth;
-      out.say = 'Nothing stored covers this yet and the ' + auth.source + ' confirms it, so your code accepts the fact with the ' + auth.source + ' as its source.';
+      out.say = p.unsupported
+        ? cap(src(auth.source)) + ' supports only part of the claim, so your code stores "' + auth.fact.replace(/\.$/, '') + '" and drops ' + p.unsupported + '.'
+        : 'Nothing stored covers this yet and ' + src(auth.source) + ' confirms it, so your code stores the fact with ' + src(auth.source) + ' as its source.';
       return out;
     }
     if (cur && auth && auth.value === cur.value) {
       cur.verified = TODAY;
       p.status = out.decision = 'rejected';
       out.evidence = auth;
-      out.say = 'The proposal contradicts a confirmed fact, and ' + auth.source + ' backs the confirmed fact, so your code rejects the proposal even though it is newer.';
+      out.say = 'The proposal contradicts a confirmed fact, and ' + src(auth.source) + ' backs the confirmed fact, so your code rejects the proposal even though it is newer.';
       return out;
     }
     if (cur && auth && auth.value === p.value) {
       var id = cur.id + '-2';
       cur.status = 'superseded';
       cur.supersededBy = id;
-      store.push({ id: id, label: cur.label, type: 'fact', key: p.key, value: p.value, text: p.text, scope: p.scope, source: auth.source, verified: TODAY, status: 'accepted', pinned: cur.pinned, tokens: cur.tokens, supersedes: cur.id });
+      store.push({ id: id, label: cur.label, type: 'fact', key: p.key, value: auth.value, text: auth.fact, scope: p.scope, source: auth.source, verified: TODAY, status: 'accepted', pinned: cur.pinned, tokens: cur.tokens, supersedes: cur.id });
       p.status = out.decision = 'replaces';
       out.evidence = auth;
-      out.say = 'The proposal contradicts a confirmed fact, but ' + auth.source + ' backs the new claim, so your code marks the old fact as replaced and keeps it as history.';
+      out.say = 'The proposal contradicts a confirmed fact, but ' + src(auth.source) + ' backs the new claim, so your code marks the old fact as replaced and keeps it as history.';
       return out;
     }
     p.status = out.decision = 'unresolved';
@@ -277,7 +283,7 @@
     lane.forEach(function (p, n) {
       var d = decide(store, p);
       snap({ proposal: p.id, decision: d.decision, evidence: d.evidence || null, conflict: d.conflict || null, checks: d.checks,
-        title: 'Proposal ' + (n + 1) + ': ' + DECISION_LABEL[d.decision], say: d.say });
+        title: 'Proposal ' + (n + 1) + ': ' + DECISION_LABEL[d.decision] + (p.partial ? ' in part' : ''), say: d.say });
     });
     snap({ title: 'The next memory file', file: memoryFile(store), say: 'Your code rebuilds the memory file for the next run, so that run sees Python 3.12, while the MySQL claim never entered memory.' });
     return { proposals: clone(PROPOSALS), steps: steps, final: store };
@@ -392,13 +398,13 @@
         h('thead', null, h('tr', null, head.map(function (c, n) { return h('th', { scope: 'col', class: cls(n), text: c }); }))), tb));
     }
 
-    // An entry gets its full text when it matters at this step, and one short line otherwise.
+    // An entry gets its provenance when it matters at this step; otherwise a compact row with the full text.
     function entry(e, mark, opts) {
       opts = opts || {};
       var cls = 'ms-entry' + (opts.hl ? ' is-hl' : '') + (opts.dim ? ' is-dim' : '') + (e.status === 'superseded' ? ' is-old' : '');
       var pill = h('span', { class: 'w-pill state', text: TYPE_LABEL[e.type] || e.type });
       var badge = mark ? status(mark[0], mark[1]) : null;
-      if (!opts.full) return h('li', { class: cls + ' is-compact', title: e.text }, pill, badge, h('span', { class: 'ms-entry-line', text: e.text }));
+      if (!opts.full) return h('li', { class: cls + ' is-compact' }, pill, badge, h('span', { class: 'ms-entry-line', text: e.text }));
       return h('li', { class: cls },
         h('div', { class: 'ms-entry-top' }, pill, badge),
         h('p', { class: 'ms-entry-text', text: e.text }),
@@ -547,7 +553,7 @@
       var lane = h('ul', { class: 'ms-list' });
       st.proposals.forEach(function (q) {
         lane.appendChild(h('li', { class: 'ms-entry' + (q.id === st.proposal ? ' is-hl' : '') },
-          h('div', { class: 'ms-entry-top' }, h('span', { class: 'w-pill model', text: 'proposal' }), status(DECISION_LABEL[q.status], DECISION_CLASS[q.status])),
+          h('div', { class: 'ms-entry-top' }, h('span', { class: 'w-pill model', text: 'proposal' }), status(DECISION_LABEL[q.status] + (q.partial ? ' in part' : ''), DECISION_CLASS[q.status])),
           h('p', { class: 'ms-entry-text', text: q.text }),
           h('p', { class: 'ms-entry-meta', text: 'Came from: ' + q.source })));
       });
@@ -556,8 +562,8 @@
       if (p) {
         title(details, 'Checks for this proposal');
         details.appendChild(rows([['Password or secret?', st.checks.privacy === 'pass' ? 'no' : 'yes, so it is blocked'],
-          ['Conflicts with', st.checks.conflict === 'none' ? 'nothing saved' : st.checks.conflict.replace(/^with /, '')],
-          ['Trusted source says', st.checks.source], ['Decision', status(DECISION_LABEL[st.decision], DECISION_CLASS[st.decision])]]));
+          ['Conflicts with', st.checks.conflict === 'none' ? 'nothing stored' : st.checks.conflict.replace(/^with /, '')],
+          ['Trusted source says', st.checks.source], ['Decision', status(DECISION_LABEL[st.decision] + (p.partial ? ' in part' : ''), DECISION_CLASS[st.decision])]]));
       } else if (st.file) {
         title(details, 'Memory file for the next run');
         details.appendChild(h('ul', { class: 'ms-ctx-items' }, st.file.map(function (f) { return h('li', { text: f.text }); })));

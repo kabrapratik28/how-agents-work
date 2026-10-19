@@ -107,6 +107,23 @@ export default function (sims, assert) {
   assert.ok(p4.at > fin['deploy-window'].verified, 'the claim is newer');
   assert.equal(fin['deploy-window'].value, 'any weekday', 'the accepted rule stands');
   assert.equal(w.steps[w.steps.length - 1].proposals.find((p) => p.id === 'p4').status, 'unresolved');
+  // Evidence must support what is stored: the stored text comes from the evidence, not the proposal.
+  const tokens = (v) => v.toLowerCase().match(/[a-z]+|\d+(?:\.\d+)*/g);
+  for (let i = 1; i < w.steps.length; i++) {
+    const st = w.steps[i];
+    if (st.decision !== 'accepted' && st.decision !== 'replaces') continue;
+    const before = new Set(w.steps[i - 1].store.map((e) => e.id));
+    const added = st.store.filter((e) => !before.has(e.id));
+    assert.equal(added.length, 1, 'one new fact per accepted proposal');
+    const ev = st.evidence;
+    for (const t of tokens(added[0].value)) assert.ok(ev.says.toLowerCase().includes(t), 'evidence "' + ev.says + '" must show "' + t + '"');
+    assert.equal(added[0].text, ev.fact, 'stored text is built from the evidence');
+    assert.equal(added[0].source, ev.source);
+  }
+  assert.ok(!w.final.some((e) => /12 minutes/.test(e.text)), 'the unchecked duration is never stored');
+  const rejected = w.steps.find((st) => st.decision === 'rejected');
+  assert.ok(tokens(fin['db-engine'].value).every((t) => rejected.evidence.says.toLowerCase().includes(t)), 'the evidence backs the existing fact');
+  assert.ok(!rejected.evidence.says.toLowerCase().includes('mysql'), 'the evidence does not back the proposal');
   // The next memory file reflects the accepted change.
   const next = m.memoryFile(w.final).map((x) => x.text).join(' ');
   assert.match(next, /3\.12/);
