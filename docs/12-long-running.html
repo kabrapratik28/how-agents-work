@@ -21,9 +21,9 @@
 
   <section id="interactive-vs-durable">
     <h2>Interactive agents and durable agents</h2>
-    <p>Picture two crashes. A coding agent is fixing a bug while you watch, and your laptop restarts. You notice and start it again. Now picture a job that emails a report every night. It crashes at 2 a.m., right after sending the email but before saving that it did. Nobody is watching, so the restarted job sends the email again.</p>
+    <p>Picture two crashes. A coding agent is fixing a bug while you watch, and your laptop restarts, so you start it again. Now picture a job that emails a report every night. It crashes at 2 a.m., right after sending the email but before saving that it did. Nobody is watching, so the restarted job sends the email again.</p>
     <p>The first agent is interactive: a person watches it and handles its failures. The second must be durable, because it has to handle failures alone.</p>
-    <p>Running for a long time does not make an agent durable: a chat that runs for an hour still loses everything if its program dies. A durable agent keeps three promises after a failure:</p>
+    <p>Running for a long time does not make an agent durable. A chat that runs for an hour still loses everything if its program dies. A durable agent keeps three promises after a failure:</p>
     <ul>
       <li>It keeps its progress. It continues from its last saved step.</li>
       <li>It does not repeat side effects. A side effect is a change outside the agent, such as an email, a payment, or a pull request. When the agent cannot tell whether one happened, it checks before trying again.</li>
@@ -58,7 +58,7 @@
 
   <section id="persistent-state">
     <h2>What to save</h2>
-    <p>A new worker that takes over the report job must know which task it was on, how far it got, and whether it already tried to send the email. So a durable agent saves these things outside the program:</p>
+    <p>Say a new worker takes over the report job. It must know which task it was on, how far it got, and whether it already tried to send the email. So a durable agent saves these things outside the program:</p>
     <ul>
       <li>A run record: the task, its status, which worker has it, the number of attempts, and the code and prompt version.</li>
       <li>The checkpoint.</li>
@@ -78,7 +78,7 @@
       <span class="node runtime">Worker with a lease</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node state">Saved state</span>
     </div>
-    <p>Each worker holds a lease, so that a dead worker's task is not lost. A lease is a claim on the task that expires after a few minutes. A live worker renews it every minute with a heartbeat. When a worker dies, its heartbeats stop and the lease expires, so another worker takes the task and continues from the checkpoint.</p>
+    <p>Each worker holds a lease, so that a dead worker's task is not lost. A lease is a claim on a task that runs out unless it is renewed, such as "worker 3 owns task 17 until 02:05". A live worker renews its lease every minute with a short message called a heartbeat. When a worker dies, its heartbeats stop and the lease runs out, so another worker takes the task and continues from the checkpoint.</p>
 <pre><code>while True:
     task = queue.claim(lease_seconds=300)     # other workers skip it for 5 minutes
     if task is None:
@@ -90,15 +90,7 @@
             queue.complete(task)
         except Exception as err:
             queue.fail(task, err)             # try again later, or give up after N tries</code></pre>
-    <p>Leases have a price: a task can run twice. A worker might freeze without dying, lose its lease, and wake up after a second worker took over. Engineers call this at-least-once execution, and it means every side effect must be safe to attempt twice.</p>
-    <p>A fencing token limits the damage: each new lease gets a higher number, and the database refuses saves with an older one. That stops the frozen worker's saves, but it cannot unsend its email.</p>
-    <p>After a few failed tries, move the task to a dead-letter queue and tell a person.</p>
-    <aside class="callout cases">
-      <p class="callout-title">How real systems do it</p>
-      <ul>
-        <li><strong>Hermes</strong> (v0.22.2) runs multi-agent work from Kanban, a task board kept in SQLite. Every 60 seconds, a dispatcher takes back tasks from workers that crashed or went quiet. A long task must check in at least hourly, or it is taken back after 4 hours.</li>
-      </ul>
-    </aside>
+    <p>Leases have a price: a task can run twice. A worker might freeze without dying, lose its lease, and wake up after a second worker took over. Engineers call this at-least-once execution: each task runs at least once, and sometimes more. So every side effect must be safe to attempt twice.</p>
   </section>
 
   <section id="retries">
@@ -120,13 +112,13 @@
             sleep(base * 2**n * random.uniform(0.5, 1.5))   # backoff with jitter
     # permanent errors are not caught here; they go back to the model</code></pre>
     <p>Each retry waits about twice as long as the last, which is called backoff. It also adds a random delay, called jitter, so a thousand workers that failed together do not all retry at the same moment.</p>
-    <p>Retry at one level only. Three layers that each retry three times turn one stubborn failure into 27 attempts.</p>
+    <p>Retry at one level only, or three layers of three retries turn one failure into 27 attempts.</p>
     <p>A timeout means only that no answer came back, and the other side may have done the work. So retry reads freely, but give every send an idempotency key.</p>
   </section>
 
   <section id="schedules-and-events">
     <h2>Schedules and events</h2>
-    <p>The report job runs every night at 02:00. A triage agent starts when a build fails, and a support agent starts when a ticket arrives. Whatever the trigger, it should only add a task to the queue. Then every run gets the same checkpoints, retries, and logs.</p>
+    <p>The report job runs every night at 02:00. A triage agent starts when a build fails, and a support agent starts when a ticket arrives. Each trigger should only add a task to the queue, so every run gets the same checkpoints and retries.</p>
     <p>Decide three rules for each trigger:</p>
     <ul>
       <li>Missed runs. If the system was down at 02:00, run once later, run every missed time, or skip?</li>
@@ -155,11 +147,11 @@
         state.messages.append(result)</code></pre>
     <p>Why not call the model again? Because it may answer differently, and the new answer could contradict what already happened. Replaying keeps the run consistent, and it saves money.</p>
     <h3 id="paused-runs">Paused runs and new code</h3>
-    <p>A run that waits two days for approval resumes under the code deployed by then, which may have renamed a tool. So save the code and prompt version in the run record. Then pick a policy: keep old workers until old runs finish, upgrade old checkpoints, or restart old runs from their original request.</p>
+    <p>A run that waits two days for approval resumes under the code deployed by then, which may have renamed a tool. So save the code and prompt version in the run record. Then decide in advance: keep old workers until old runs finish, upgrade old checkpoints, or restart old runs.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
-        <li><strong>Anthropic's long-running harness</strong> (Nov 2025) handles coding work that spans many sessions, where "each new session begins with no memory of what came before". A first session writes a progress log, a feature list with every feature marked failing, and a first git commit. Each later session reads them, finishes and tests one feature, commits, and updates the log.</li>
+        <li><strong>Anthropic's long-running harness</strong> (Nov 2025) handles coding work that spans many sessions, where "each new session begins with no memory of what came before". A first session writes a progress log, a feature list with every feature marked failing, and a first git commit. Each later session reads them, finishes and tests one feature, and commits.</li>
       </ul>
     </aside>
   </section>
@@ -168,13 +160,12 @@
     <h2>Idempotency: making repeats harmless</h2>
     <p>Back to 02:06: the worker sent the email, then crashed before saving the reply. The new worker finds no record of the send, so if it sends again, the team gets two reports.</p>
     <p>An action is idempotent if doing it twice has the same effect as doing it once. Reading a file is idempotent, and so is "set the ticket to closed". Sending an email is not.</p>
-    <p>Queues, retries, and restarts all repeat work, so a non-idempotent action will eventually happen twice. Your side alone cannot prevent it, because your records and the email service are separate systems. There is always a moment when the email is sent but your record does not say so yet.</p>
-    <p>The fix needs the receiving service's help. Your code gives the action an idempotency key, a unique id for that one action:</p>
+    <p>Queues, retries, and restarts all repeat work, so a non-idempotent action will eventually happen twice. You cannot prevent this on your side alone. There is always a moment when the email is sent but your record does not say so yet.</p>
+    <p>The fix needs the receiving service's help. Your code gives the action an idempotency key, which is a unique id for that one action, such as <code>op-8c41</code>:</p>
     <ol>
       <li>Your code creates the key and saves it before the first attempt.</li>
       <li>It sends the same key with every attempt, including after a restart.</li>
-      <li>The service remembers the keys it has seen. For a repeated key, it returns the first result and does nothing new.</li>
-      <li>The service forgets keys after a while, say 24 hours. After that, a repeat looks new.</li>
+      <li>The service remembers keys for a while, say 24 hours. A repeated key inside that window gets the first result back, and nothing happens again.</li>
     </ol>
     <p>Your code also tracks each action through four states:</p>
     <div class="table-wrap">
@@ -202,8 +193,14 @@ if op.state == "intended":
     journal.update(op, state="attempted")      # saved before the first send
 reply = email_service.send(report, idempotency_key=op.key)
 return journal.update(op, state="confirmed", result=reply.id).result</code></pre>
-    <p>When a retry is not safe, your code must reconcile: find out what happened before acting, by searching the service's history for the key or by asking a person.</p>
-    <p>A key made up at send time is lost in a crash, so the retry carries a new key and the service sends a new email. Where you can, build the key from what the action means, like <code>weekly-report:2026-10-19:team</code>, so it survives even a lost checkpoint.</p>
+    <p>When a retry is not safe, your code must reconcile, which means finding out what happened before acting. For example, it can ask the email service whether it sent <code>op-8c41</code>, or ask a person to check the team's inbox.</p>
+    <p>A key made up at send time is lost in a crash. The retry then carries a new key, and the service sends a new email. Where you can, build the key from what the action means, like <code>weekly-report:2026-10-19:team</code>, so it survives even a lost checkpoint.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Temporal</strong>, a durable-execution engine, calls each step an activity and keeps an event history for each workflow: "During replay, activities that have already been executed are not re-executed." A step can still run twice, for example when "the Worker crashes just before it notifies the Temporal Service". So its docs suggest keys made from "a combination of the Workflow Run ID and the Activity ID".</li>
+      </ul>
+    </aside>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>Exactly-once action = attempts that may repeat + a key saved before the first attempt + a receiving service that ignores repeated keys for a while. Without that service, you must check what happened before each retry.</p>
@@ -216,17 +213,17 @@ return journal.update(op, state="confirmed", result=reply.id).result</code></pre
     <ol>
       <li>Save a checkpoint after each step. The fetches stop repeating, but the email still goes out twice.</li>
       <li>Add the key saved before sending. When the new worker finds the email marked attempted, send again with the same key.</li>
-      <li>Switch to a service that sends every request, and send again. Then try asking the service instead.</li>
-      <li>Switch the service back, and start the new worker 30 hours later.</li>
+      <li>Open More settings, choose an email service that sends every request, and send again. Then try asking the email service instead.</li>
+      <li>Switch the service back, and let the new worker start 30 hours later.</li>
     </ol>
     <div class="widget" data-widget="durable">
-      <p class="noscript">Interactive widget. Without JavaScript, here is what it shows. A nightly job fetches data, asks the model for a summary, and emails a report. If it saves nothing and crashes right after sending, the restart redoes everything and sends a second email. Checkpoints stop the repeated work but not the second email. Only a key saved before sending, given to a service that remembers keys, gives exactly one email.</p>
+      <p class="noscript">Interactive widget. Without JavaScript, here is what it shows. A nightly job fetches data, asks the model for a summary, and emails a report. If it saves nothing and crashes right after sending, the restart redoes everything and sends a second email. Checkpoints stop the repeated work, but only a key saved before sending, given to a service that remembers keys, prevents the second email.</p>
     </div>
   </section>
 
   <section id="distributed-systems">
     <h2>Why this is distributed systems</h2>
-    <p>With a queue, workers, a checkpoint database, retries, a scheduler, and a remote email service, the report job is now a distributed system, with the usual problems:</p>
+    <p>The report job now has a queue, workers, a checkpoint database, retries, a scheduler, and a remote email service. That makes it a distributed system, with the usual problems:</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>Distributed-systems problems in the report job</caption>
@@ -236,14 +233,13 @@ return journal.update(op, state="confirmed", result=reply.id).result</code></pre
           <tr><th scope="row">Partial failure</th><td>Two fetches worked and one failed, or the email went out but the reply was lost</td><td>Saved results per step, records of side effects, checking what happened</td></tr>
           <tr><th scope="row">Duplicate delivery</th><td>A task, an event, or an email arrives twice</td><td>Idempotency keys, checking event ids</td></tr>
           <tr><th scope="row">Timeouts</th><td>A call times out, so did it happen?</td><td>Treat it as outcome unknown, and check before repeating</td></tr>
-          <tr><th scope="row">Leases and heartbeats</th><td>Two workers both think they own the task</td><td>Leases that expire, heartbeats, fencing tokens</td></tr>
+          <tr><th scope="row">Leases and heartbeats</th><td>Two workers both think they own the task</td><td>Leases that expire, heartbeats, and saves that check the lease is still held</td></tr>
           <tr><th scope="row">Versioning</th><td>A paused run continues under new code</td><td>A version per run, old workers kept until old runs finish</td></tr>
-          <tr><th scope="row">Observability</th><td>Why did the report go out twice at 02:06?</td><td>Logs that carry the run id, step number, and action id</td></tr>
+          <tr><th scope="row">Observability</th><td>Why did the report go out twice at 02:06?</td><td>Logs that carry the run id, step number, and action id, and alerts on stalled runs and repeated actions</td></tr>
         </tbody>
       </table>
     </div>
     <p>Agents add two problems of their own. A model may answer differently each time, so a restart must replay saved replies. And the model knows nothing about crashes, leases, or keys, so your code and the services around it must provide every guarantee.</p>
-    <p>Put a run id, a step number, and an action id in every log line, and alert on stalled runs and repeated actions (<a href="15-reliability.html">chapter 15</a>).</p>
   </section>
 
   <section id="running-example">
@@ -303,7 +299,7 @@ return journal.update(op, state="confirmed", result=reply.id).result</code></pre
         <h3>Delegate to AI</h3>
         <ul>
           <li>The checkpoint store and its format.</li>
-          <li>Queue workers, leases, heartbeats, and the dead-letter queue.</li>
+          <li>Queue workers, leases, and heartbeats.</li>
           <li>Retry wrappers with backoff and jitter.</li>
           <li>Side-effect records, the reconcile job, and alerts, to your spec.</li>
         </ul>
@@ -333,7 +329,7 @@ return journal.update(op, state="confirmed", result=reply.id).result</code></pre
         <li data-correct>Two</li>
         <li>None, because the crash cancelled the send</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>Two. The key was lost in the crash, so the new worker sends the email with a new key, and the service treats it as new.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Two. The key was lost in the crash. The new worker sends the email with a new key, and the service treats it as new.</p></details>
     </div>
   </section>
 
@@ -342,7 +338,7 @@ return journal.update(op, state="confirmed", result=reply.id).result</code></pre
     <ul>
       <li>Decide up front which failures each agent must survive: crashes, restarts, long waits, and repeated deliveries.</li>
       <li>Save model replies and tool results as they arrive, so a restart replays the run instead of asking the model again.</li>
-      <li>For every side effect, find out whether the receiving service ignores repeated keys, and for how long. If it does not, plan how your code will check what happened before a retry.</li>
+      <li>For every side effect, find out whether the receiving service ignores repeated keys, and for how long. If not, plan how to check what happened before retrying.</li>
     </ul>
   </section>
 
@@ -350,7 +346,8 @@ return journal.update(op, state="confirmed", result=reply.id).result</code></pre
     <h2>Going deeper</h2>
     <ul>
       <li><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Effective harnesses for long-running agents</a> (Anthropic, 2025).</li>
-      <li><a href="https://www.anthropic.com/engineering/managed-agents">Scaling Managed Agents: Decoupling the brain from the hands</a> (Anthropic, 2026).</li>
+      <li><a href="https://temporal.io/blog/idempotency-and-durable-execution">What is idempotency? And why it matters for durable systems</a> (Temporal, 2024).</li>
+      <li><a href="https://www.anthropic.com/engineering/managed-agents">Scaling Managed Agents</a> (Anthropic, 2026).</li>
     </ul>
   </section>
 </main>

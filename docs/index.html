@@ -12,32 +12,33 @@
 <header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
 <main class="home" id="main">
 
-  <section class="hero" id="top">
-    <p class="kicker">An interactive course on agent architecture</p>
-    <h1>How AI Agents Work</h1>
-    <p class="lede">An agent is not a mind that thinks all the time. It is a loop of ordinary code. The loop calls a model, runs what the model asks for, and repeats. Every advanced idea in this course is something added to that loop.</p>
-    <div class="hero-actions">
-      <a class="btn-primary" href="00-llm-vs-agent.html">Start with chapter 0</a>
-      <a class="btn-secondary" href="#map">See the course map</a>
+  <section class="hero hero-split" id="top">
+    <div class="hero-text">
+      <p class="kicker">An interactive course on agent architecture</p>
+      <h1>How AI Agents Work</h1>
+      <p class="lede">An agent is not a mind that thinks all the time. It is a loop of ordinary code that calls a model, runs what the model asks for, and repeats. Every advanced idea in this course is something added to that loop.</p>
+      <div class="hero-actions">
+        <a class="btn-primary" href="00-llm-vs-agent.html">Start with chapter 0</a>
+        <a class="btn-secondary" href="#map">See the course map</a>
+      </div>
+    </div>
+    <div class="panel hero-visual" id="loop">
+      <p class="hero-visual-title">The one loop behind every agent</p>
+      <div class="loop-map" data-focus="all" data-animate data-caption="One trip around the loop is one step.">
+        <ol>
+          <li>State: what your code holds</li>
+          <li>Build context: choose what the model will see</li>
+          <li>Call model: one computation, nothing remembered</li>
+          <li>Model decides: an answer or a requested action</li>
+          <li>Runtime acts: check the request, then run it</li>
+          <li>Update state: record the result, then repeat</li>
+        </ol>
+      </div>
+      <p>Two of the six steps belong to the model. The other four are code you own. Each chapter opens with this map and shows which step it extends.</p>
     </div>
   </section>
 
   <div class="home-grid">
-    <section class="panel" id="loop">
-      <h2>The one idea</h2>
-      <div class="loop-map" data-focus="all" data-caption="One trip around the loop is one step.">
-        <ol>
-          <li>State: what the runtime holds</li>
-          <li>Build context: choose what the model will see</li>
-          <li>Call model: one stateless computation</li>
-          <li>Model decides: a final answer or a requested action</li>
-          <li>Runtime acts: validate, check policy, execute</li>
-          <li>Update state: record the result, then repeat</li>
-        </ol>
-      </div>
-      <p>Two of the six steps belong to the model. The other four are code you own. Memory, planning, subagents, skills, approvals, and durability all extend this loop. Each chapter opens with this map and shows which step it extends.</p>
-    </section>
-
     <section class="panel" id="legend">
       <h2>Colors mean roles</h2>
       <p>Every diagram and widget uses the same colors, always with a label.</p>
@@ -50,14 +51,14 @@
         <li><span class="badge human">Human</span> A person: user, approver, reviewer.</li>
       </ul>
     </section>
-  </div>
 
-  <section id="outcome">
-    <h2>What you will be able to do</h2>
-    <p>By the end, you should be able to ask an AI coding system for something like this:</p>
-    <p class="target-sentence">"Build an agent with isolated subagents, durable task state, filesystem tools, human approval for dangerous actions, context compaction, and persistent project memory."</p>
-    <p>You will know what each phrase means and why you might want it. You will know the alternatives and what can go wrong. You will also know which decisions you must make yourself, even when the AI writes every line. <a href="21-design-brief.html">Chapter 21</a> decodes that sentence term by term.</p>
-  </section>
+    <section class="panel" id="outcome">
+      <h2>What you will be able to do</h2>
+      <p>By the end, you should be able to ask an AI coding system for something like this, and know exactly what you asked for:</p>
+      <p class="target-sentence">"Build an agent with isolated subagents, durable task state, filesystem tools, human approval for dangerous actions, context compaction, and persistent project memory."</p>
+      <p>You will know what each phrase means, why you might want it, the alternatives, and what can go wrong. <a href="21-design-brief.html">Chapter 21</a> decodes the sentence term by term.</p>
+    </section>
+  </div>
 
   <section id="how-to-use">
     <h2>How to use this course</h2>

@@ -54,7 +54,7 @@
     var gwSent = [];                 // the service's history of sent emails: {msg, ref, at}
     var gwLog = [];
     var inbox = [];
-    var c = { fetch: { a: 0, b: 0, c: 0 }, fetchTotal: 0, model: 0 };
+    var c = { fetch: { a: 0, b: 0, c: 0 }, fetchTotal: 0, model: 0, write: 0 };
     var sendState = null;
     var clock = 0;                   // minutes since the job started
     var restarted = false;
@@ -157,6 +157,7 @@
     }
 
     function writeReport() {
+      c.write += 1;
       memory.write_report = REPORT;
       if (ckpt) store.done.write_report = REPORT;
       push('code', 'runtime', 'Write the report', 'Ordinary code turns the summary into a report file.' + (ckpt ? ' The worker saves a checkpoint.' : ''), 'wrote the report', { at: 'write_report' });
@@ -292,6 +293,13 @@
     return ['', 'not done'];
   }
 
+  function runs(s, key) {
+    if (key === 'summarize') return s.counters.model;
+    if (key === 'write_report') return s.counters.write;
+    if (key === 'send_email') return s.gatewayLog.filter(function (e) { return e.type === 'send'; }).length;
+    return s.counters.fetch[key.slice(-1)];
+  }
+
   AC.widgets['durable'] = function (root) {
     var h = AC.h;
     var o = clone(DEFAULTS);
@@ -306,7 +314,16 @@
     var body = h('div', { class: 'w-body' });
     frame.appendChild(body);
 
+    var MORE = ['receiver', 'delay'];
+    var moreSummary = h('summary', { text: 'More settings' });
+    var moreFields = h('div', { class: 'du-setup' });
     var setup = h('div', { class: 'du-setup' });
+    function paintMore() {
+      var changed = MORE.filter(function (k) { return o[k] !== DEFAULTS[k]; }).map(function (k) {
+        return OPTIONS[k].choices.filter(function (c) { return c[0] === o[k]; })[0][1].toLowerCase();
+      });
+      moreSummary.textContent = 'More settings' + (changed.length ? ': ' + changed.join(', ') : '');
+    }
     Object.keys(OPTIONS).forEach(function (k) {
       var id = AC.uid('du-' + k);
       var sel = h('select', { id: id });
@@ -315,14 +332,14 @@
         opt.selected = c[0] === o[k];
         sel.appendChild(opt);
       });
-      sel.addEventListener('change', function () { o[k] = sel.value; stepper.reset(); });
-      setup.appendChild(h('div', { class: 'du-field' }, h('label', { for: id, text: OPTIONS[k].label }), sel));
+      sel.addEventListener('change', function () { o[k] = sel.value; paintMore(); stepper.reset(); });
+      (MORE.indexOf(k) !== -1 ? moreFields : setup).appendChild(h('div', { class: 'du-field' }, h('label', { for: id, text: OPTIONS[k].label }), sel));
     });
     body.appendChild(setup);
+    body.appendChild(h('details', { class: 'du-more' }, moreSummary, moreFields));
 
     var flow = h('ol', { class: 'du-flow', 'aria-label': 'The job steps and what is saved' });
     var inboxBox = h('div', { class: 'du-inbox-box' });
-    var stats = h('div', { class: 'du-stats' });
     var timeline = h('div', { class: 'w-panel du-panel' });
     var memPanel = h('div', { class: 'w-panel du-panel' });
     var gwPanel = h('div', { class: 'w-panel du-panel' });
@@ -354,7 +371,9 @@
       WORKFLOW.forEach(function (key) {
         var st = stepStatus(s, key);
         var cls = 'du-step' + (st[0] ? ' is-' + st[0] : '') + (s.at === key && s.kind !== 'crash' ? ' is-current' : '');
-        flow.appendChild(h('li', { class: cls }, h('span', { class: 'du-step-name', text: LABEL[key] }), h('span', { class: 'du-step-state', text: st[1] })));
+        var count = runs(s, key);
+        flow.appendChild(h('li', { class: cls }, h('span', { class: 'du-step-name', text: LABEL[key] }), h('span', { class: 'du-step-state', text: st[1] }),
+          count > 1 ? h('span', { class: 'du-step-runs', text: (key === 'send_email' ? 'sent ' : 'ran ') + count + ' times' }) : null));
       });
 
       var n = s.inbox.length;
@@ -362,11 +381,6 @@
       inboxBox.textContent = '';
       inboxBox.appendChild(h('span', { class: 'du-inbox-title', text: 'Team\'s inbox' }));
       inboxBox.appendChild(h('span', { class: 'du-inbox-count', text: n === 0 ? 'No email yet' : n === 1 ? '1 email' : n + ' emails: the report arrived twice' }));
-
-      stats.textContent = '';
-      [[s.counters.fetchTotal, 'fetches run (3 needed)'], [s.counters.model, 'model calls (1 needed)']].forEach(function (x) {
-        stats.appendChild(h('span', { class: 'du-stat' }, h('span', { class: 'du-stat-num', text: String(x[0]) }), h('span', { class: 'du-stat-label', text: x[1] })));
-      });
 
       timeline.textContent = '';
       title('What happened').forEach(function (e) { timeline.appendChild(e); });
@@ -436,8 +450,9 @@
     });
     body.appendChild(stepper.el);
     body.appendChild(h('div', { class: 'du-picture' }, flow, inboxBox));
-    body.appendChild(stats);
-    body.appendChild(h('div', { class: 'w-grid cols-3 du-details' }, timeline, memPanel, gwPanel));
+    body.appendChild(h('details', { class: 'du-details' },
+      h('summary', { text: 'Details: what happened, what is saved, and what the email service did' }),
+      h('div', { class: 'w-grid cols-3' }, timeline, memPanel, gwPanel)));
     root.appendChild(frame);
     stepper.go(0);
   };

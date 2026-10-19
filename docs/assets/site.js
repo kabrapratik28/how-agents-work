@@ -128,6 +128,17 @@
     grid.setAttribute('role', 'img');
     grid.setAttribute('aria-label', summary + (caption ? ' ' + caption : ''));
     if (caption) el.appendChild(AC.h('p', { class: 'lm-caption', 'aria-hidden': 'true', text: caption + ' Violet steps are the model. Blue steps are your code.' }));
+    if (el.hasAttribute('data-animate') && !AC.reducedMotion()) {
+      var nodes = grid.querySelectorAll('.lm-node');
+      var n = 0;
+      grid.classList.add('cycling');
+      var tick = function () {
+        nodes.forEach(function (x, k) { x.classList.toggle('is-active', k === n); });
+        n = (n + 1) % nodes.length;
+      };
+      tick();
+      setInterval(tick, 1300);
+    }
   }
 
   /* ---------- theme ---------- */
@@ -436,6 +447,66 @@
     links.forEach(function (l) { io.observe(l.el); });
   }
 
+  /* ---------- polish: code colors, heading links, reading time, progress ---------- */
+
+  var KW = 'def|return|if|elif|else|for|while|in|not|and|or|None|True|False|import|from|class|try|except|raise|with|function|var|const|let|async|await|new';
+  var TOKEN = new RegExp('("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\')|((?:^|\\s)(?:#|\\/\\/)[^\\n]*)|\\b(' + KW + ')\\b', 'g');
+  function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function colorLine(line) {
+    if (/^\+(\s|$)/.test(line)) return '<span class="hl-add">' + esc(line) + '</span>';
+    if (/^-(\s|$)/.test(line)) return '<span class="hl-del">' + esc(line) + '</span>';
+    var out = '', last = 0, m;
+    TOKEN.lastIndex = 0;
+    while ((m = TOKEN.exec(line))) {
+      out += esc(line.slice(last, m.index));
+      var cls = m[1] ? 'hl-str' : (m[2] ? 'hl-com' : 'hl-kw');
+      out += '<span class="' + cls + '">' + esc(m[0]) + '</span>';
+      last = TOKEN.lastIndex;
+      if (m[0] === '') TOKEN.lastIndex++;
+    }
+    return out + esc(line.slice(last));
+  }
+  function highlightCode() {
+    document.querySelectorAll('pre:not(.diagram) > code').forEach(function (code) {
+      if (code.children.length) return; // already marked up by the author
+      code.innerHTML = code.textContent.split('\n').map(colorLine).join('\n');
+    });
+  }
+
+  function headingLinks() {
+    document.querySelectorAll('main section[id] > h2').forEach(function (h2) {
+      h2.appendChild(AC.h('a', { class: 'h-anchor', href: '#' + h2.parentElement.id, 'aria-label': 'Link to this section', text: '#' }));
+    });
+  }
+
+  function readingTime() {
+    var main = document.querySelector('main.chapter');
+    var kicker = main && main.querySelector('.kicker');
+    if (!kicker) return;
+    var words = (main.textContent.match(/\S+/g) || []).length;
+    kicker.appendChild(AC.h('span', { class: 'read-time', text: ' · ' + Math.max(1, Math.round(words / 230)) + ' min read' }));
+  }
+
+  function readingProgress() {
+    if (!document.querySelector('main.chapter')) return;
+    var fill = AC.h('span');
+    document.body.appendChild(AC.h('div', { class: 'read-progress', 'aria-hidden': 'true' }, fill));
+    var queued = false;
+    var paint = function () {
+      queued = false;
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      fill.style.width = (max > 0 ? Math.min(100, 100 * window.scrollY / max) : 0) + '%';
+    };
+    window.addEventListener('scroll', function () { if (!queued) { queued = true; requestAnimationFrame(paint); } }, { passive: true });
+    paint();
+  }
+
+  function footer() {
+    document.body.appendChild(AC.h('footer', { class: 'site-footer' },
+      AC.h('span', { text: 'How AI Agents Work. Concepts first, frameworks as case studies.' }),
+      AC.h('span', { text: 'Your progress and notes stay in this browser.' })));
+  }
+
   /* ---------- widgets ---------- */
 
   function mountWidgets() {
@@ -483,6 +554,11 @@
     markHomeProgress();
     buildPager(file);
     buildToc();
+    highlightCode();
+    headingLinks();
+    readingTime();
+    readingProgress();
+    footer();
     paintProgress();
     mountWidgets();
   }
