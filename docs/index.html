@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How AI Agents Work</title>
+<meta name="description" content="An interactive course on how AI agents work, concept by concept, for engineers who want to design agents and direct AI to build them.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="home" id="main">
+
+  <section class="hero" id="top">
+    <p class="kicker">An interactive course on agent architecture</p>
+    <h1>How AI Agents Work</h1>
+    <p class="lede">An agent is not a mind that thinks all the time. It is a loop of ordinary code. The loop calls a model, runs what the model asks for, and repeats. Every advanced idea in this course is something added to that loop.</p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="00-llm-vs-agent.html">Start with chapter 0</a>
+      <a class="btn-secondary" href="#map">See the course map</a>
+    </div>
+  </section>
+
+  <div class="home-grid">
+    <section class="panel" id="loop">
+      <h2>The one idea</h2>
+      <div class="loop-map" data-focus="all" data-caption="One trip around the loop is one step.">
+        <ol>
+          <li>State: what the runtime holds</li>
+          <li>Build context: choose what the model will see</li>
+          <li>Call model: one stateless computation</li>
+          <li>Model decides: a final answer or a requested action</li>
+          <li>Runtime acts: validate, check policy, execute</li>
+          <li>Update state: record the result, then repeat</li>
+        </ol>
+      </div>
+      <p>Two of the six steps belong to the model. The other four are code you own. Memory, planning, subagents, skills, approvals, and durability all extend this loop. Each chapter opens with this map and shows which step it extends.</p>
+    </section>
+
+    <section class="panel" id="legend">
+      <h2>Colors mean roles</h2>
+      <p>Every diagram and widget uses the same colors, always with a label.</p>
+      <ul class="legend">
+        <li><span class="badge model">Model</span> The model: one call, context in, response out.</li>
+        <li><span class="badge runtime">Runtime</span> Your code: the loop, policy, execution.</li>
+        <li><span class="badge tool">Tool</span> Tools and the outside world.</li>
+        <li><span class="badge state">State</span> State, memory, and storage.</li>
+        <li><span class="badge context">Context</span> What the model sees in one call.</li>
+        <li><span class="badge human">Human</span> A person: user, approver, reviewer.</li>
+      </ul>
+    </section>
+  </div>
+
+  <section id="outcome">
+    <h2>What you will be able to do</h2>
+    <p>By the end, you should be able to ask an AI coding system for something like this:</p>
+    <p class="target-sentence">"Build an agent with isolated subagents, durable task state, filesystem tools, human approval for dangerous actions, context compaction, and persistent project memory."</p>
+    <p>You will know what each phrase means and why you might want it. You will know the alternatives and what can go wrong. You will also know which decisions you must make yourself, even when the AI writes every line. <a href="21-design-brief.html">Chapter 21</a> decodes that sentence term by term.</p>
+  </section>
+
+  <section id="how-to-use">
+    <h2>How to use this course</h2>
+    <ul>
+      <li>Read the parts in order. Each one builds on the loop from the parts before it.</li>
+      <li>Use the widgets. Step through them slowly and watch what the model can see at each step.</li>
+      <li>Answer the "Check yourself" questions before you open the answers.</li>
+      <li>Do the design checkpoint at the end of each part. You apply that part's ideas to a new agent before you see a reference design.</li>
+      <li>Follow Patch, the running example. It is a coding agent that gains one capability per chapter.</li>
+      <li>Use <a href="questions.html">the 31 questions</a> as a final self-test and the <a href="glossary.html">glossary</a> when a term turns vague.</li>
+    </ul>
+    <p>Progress, ticks, and your exercise notes are saved in this browser only. Nothing is sent anywhere.</p>
+  </section>
+
+  <section id="map">
+    <h2>Course map</h2>
+
+    <h3 class="map-part">Start here<small>What separates a model from an agent.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="00-llm-vs-agent.html"><span class="map-num">00</span><span class="map-title">LLM vs agent</span><span class="map-short">The model computes. Your code acts. Where intelligence ends and agency begins.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">The core loop<small>The loop, its tools, its state, and what the model sees.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="01-agent-loop.html"><span class="map-num">01</span><span class="map-title">The agent loop</span><span class="map-short">Observe, decide, act, repeat. The loop every agent runs, and how it ends.</span></a></li>
+      <li><a class="map-card" href="02-tools.html"><span class="map-num">02</span><span class="map-title">Tools</span><span class="map-short">A tool call is a structured request. The runtime decides whether and how to run it.</span></a></li>
+      <li><a class="map-card" href="03-state.html"><span class="map-num">03</span><span class="map-title">State</span><span class="map-short">Conversation, runtime state, world state, persistent state. Who holds what.</span></a></li>
+      <li><a class="map-card" href="04-context.html"><span class="map-num">04</span><span class="map-title">Context</span><span class="map-short">The model sees only what you put in front of it. Choosing that is the central design problem.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Capabilities built on the loop<small>Memory, planning, subagents, skills, and coding agents.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="05-memory.html"><span class="map-num">05</span><span class="map-title">Memory</span><span class="map-short">Storage, a write policy, retrieval, and injection. Not the model remembering.</span></a></li>
+      <li><a class="map-card" href="06-planning.html"><span class="map-num">06</span><span class="map-title">Planning and reflection</span><span class="map-short">A plan is a maintained list of intended actions. Reflection is another model call.</span></a></li>
+      <li><a class="map-card" href="07-subagents.html"><span class="map-num">07</span><span class="map-title">Subagents</span><span class="map-short">Another loop with its own context. When delegation helps and when it costs too much.</span></a></li>
+      <li><a class="map-card" href="08-skills.html"><span class="map-num">08</span><span class="map-title">Skills</span><span class="map-short">Six things people call a skill, and what each reduces to.</span></a></li>
+      <li><a class="map-card" href="09-coding-agents.html"><span class="map-num">09</span><span class="map-title">Coding agents</span><span class="map-short">A few file and shell tools, a fast feedback loop, and a capable model.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Control and safety<small>What the agent can touch, and when a person decides.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="10-sandboxing.html"><span class="map-num">10</span><span class="map-title">Sandboxing</span><span class="map-short">Instructions, gates, containment, external controls. Which one actually stops the attack.</span></a></li>
+      <li><a class="map-card" href="11-human-in-the-loop.html"><span class="map-num">11</span><span class="map-title">Human in the loop</span><span class="map-short">Pause, persist, ask, resume. Approval bound to one exact action.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Systems<small>Long-running work, communication, and architecture.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="12-long-running.html"><span class="map-num">12</span><span class="map-title">Long-running agents</span><span class="map-short">Checkpoints, queues, retries, idempotency. Agents turn into distributed systems.</span></a></li>
+      <li><a class="map-card" href="13-communication.html"><span class="map-num">13</span><span class="map-title">Agent communication</span><span class="map-short">Shared state, messages, events, queues, return values, blackboards, databases.</span></a></li>
+      <li><a class="map-card" href="14-architectures.html"><span class="map-num">14</span><span class="map-title">Agent architectures</span><span class="map-short">From one agent to hierarchies, as composable choices with costs.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Quality<small>How agents fail and how to measure them.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="15-reliability.html"><span class="map-num">15</span><span class="map-title">Reliability</span><span class="map-short">Thirteen ways agents fail: why, how to detect it, how to mitigate it.</span></a></li>
+      <li><a class="map-card" href="16-evaluation.html"><span class="map-num">16</span><span class="map-title">Evaluation</span><span class="map-short">Measuring whole runs, not single answers.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Real systems<small>Hermes, Deep Agents, Pi, and others as case studies.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="17-case-studies.html"><span class="map-num">17</span><span class="map-title">Framework case studies</span><span class="map-short">Hermes, Deep Agents, Pi, and others. Which general ideas each one implements.</span></a></li>
+      <li><a class="map-card" href="17b-comparison.html"><span class="map-num">17b</span><span class="map-title">Comparison table</span><span class="map-short">The same concepts side by side across systems.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Thinking like a designer<small>Attribute gains, own the decisions, practice designs.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="18-model-vs-architecture.html"><span class="map-num">18</span><span class="map-title">Model capability vs agent architecture</span><span class="map-short">When an agent gets better, which lever caused it?</span></a></li>
+      <li><a class="map-card" href="19-what-you-design.html"><span class="map-num">19</span><span class="map-title">What AI builds vs what you design</span><span class="map-short">The decisions you own even when AI writes all the code.</span></a></li>
+      <li><a class="map-card" href="20-exercises.html"><span class="map-num">20</span><span class="map-title">Architecture exercises</span><span class="map-short">Ten design scenarios, each with one reasonable architecture.</span></a></li>
+      <li><a class="map-card" href="21-design-brief.html"><span class="map-num">21</span><span class="map-title">The design brief</span><span class="map-short">Decode the target sentence. Write a brief an AI coding system can build from.</span></a></li>
+    </ul>
+
+    <h3 class="map-part">Reference<small>Self-test and glossary.</small></h3>
+    <ul class="map-grid">
+      <li><a class="map-card" href="questions.html"><span class="map-num">Q</span><span class="map-title">The 31 questions</span><span class="map-short">Self-test with answers and links back to the chapters.</span></a></li>
+      <li><a class="map-card" href="glossary.html"><span class="map-num">G</span><span class="map-title">Glossary</span><span class="map-short">Every term reduced to primitives.</span></a></li>
+    </ul>
+  </section>
+
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

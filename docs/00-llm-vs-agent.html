@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM vs agent · How AI Agents Work</title>
+<meta name="description" content="The model turns context into a response. Everything that makes it an agent is ordinary code around it.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 0 · Start here</p>
+    <h1>LLM vs agent</h1>
+    <p class="lede">The model only turns context into a response. Everything that makes it an agent is ordinary code around it.</p>
+    <div class="loop-map" data-focus="model decide"></div>
+  </header>
+
+  <section id="llm">
+    <h2>The model is a function</h2>
+    <p>Start with the smallest useful picture. For design purposes, a language model is a function.</p>
+<pre><code>response = model(context)</code></pre>
+    <p>The context is a sequence of tokens. It holds instructions, conversation, documents, and descriptions of available tools. The response is more tokens. Usually that means text. Sometimes it is a structured request, such as "call <code>search_files</code> with these arguments".</p>
+    <p>Four properties of this function shape everything else in the course.</p>
+    <ul>
+      <li><strong>It runs no code.</strong> It cannot open a file, call an API, or run a command. It can only produce text that asks for those things.</li>
+      <li>It keeps nothing between calls. Each call starts from the context it receives and nothing else.</li>
+      <li>It is not fully predictable. The same context can produce different responses.</li>
+      <li>Its input steers it. Anything in the context can change its behavior, including text you did not write, such as a web page or a file.</li>
+    </ul>
+    <p>So what does the model know at the moment of a call? Two things. It knows what it learned in training, frozen at some cutoff date. And it knows what is in this call's context. There is no third source.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>An LLM call = one function evaluation. Context goes in, tokens come out. The call has no side effects.</p>
+    </aside>
+  </section>
+
+  <section id="agent">
+    <h2>An agent is a loop around the model</h2>
+    <p>An agent is a program that wraps the model in a loop. The program holds state. It builds a context from that state and calls the model. It reads the response, runs any action the model asked for, and records the result. Then it decides whether to go around again.</p>
+    <div class="flow vertical">
+      <span class="node state">State</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Context construction</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node model">LLM call</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node model">Decision: answer or action</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node tool">Tools and environment</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">New state, then repeat</span>
+    </div>
+    <p>Here is a complete minimal agent. It is short on purpose.</p>
+<pre><code>def run_agent(task, tools, max_steps=30):
+    messages = [system_prompt(), user(task)]
+    for step in range(max_steps):
+        reply = model(messages, tools)       # the only "intelligent" line
+        messages.append(reply)
+        if not reply.tool_calls:
+            return reply.text                # the model proposes: done
+        for call in reply.tool_calls:
+            result = execute(call)           # your code runs it, under your rules
+            messages.append(tool_result(call.id, result))
+    return "stopped: step budget used up"</code></pre>
+    <p>Look at what each line does. One line calls the model. Every other line is ordinary code you write and control. The list of messages is the state. Sending the list is context construction. The <code>if</code> is the stopping rule. The <code>execute</code> call is where the world changes.</p>
+    <p>Sophisticated agents add a lot to this skeleton. They add memory, plans, subagents, approvals, sandboxes, and checkpoints. Each of those is an extension of one of these lines. The rest of the course adds them one at a time.</p>
+  </section>
+
+  <section id="two-calls">
+    <h2>Worked example: two calls, one history</h2>
+    <p>Suppose a user asks how many open bugs a project has. The agent has one tool, <code>search_issues</code>. Here is what the runtime sends on the first call.</p>
+<pre><code>// call 1: what the model receives
+messages: [
+  {"role": "system", "content": "You are Patch, a coding agent..."},
+  {"role": "user",   "content": "How many open bugs do we have?"}
+]
+tools: [search_issues(label: string, state: "open" | "closed")]</code></pre>
+    <p>The model does not search anything. It replies with a request.</p>
+<pre><code>// the model's reply
+{"role": "assistant", "tool_calls": [
+  {"id": "call_1", "name": "search_issues",
+   "arguments": {"label": "bug", "state": "open"}}]}</code></pre>
+    <p>The runtime runs the search and gets 17 results. Now it calls the model again. Look at what it sends.</p>
+<pre><code>// call 2: what the model receives
+messages: [
+  {"role": "system",    "content": "You are Patch, a coding agent..."},
+  {"role": "user",      "content": "How many open bugs do we have?"},
+  {"role": "assistant", "tool_calls": [{"id": "call_1", "name": "search_issues", ...}]},
+  {"role": "tool", "tool_call_id": "call_1", "content": "17 issues: #412, #415, ..."}
+]</code></pre>
+    <p>The model answers "There are 17 open bugs." It seemed to remember its own request. It did not. The runtime sent the whole history back, including the model's own earlier output.</p>
+    <p>Some provider APIs can store the conversation for you. You send a conversation id, and the provider rebuilds the history on its side. That moves the storage. It does not change the model. Each call still conditions on the full context assembled for that call.</p>
+    <p>Providers can also cache the computation for a repeated prefix. That makes the repeated part cheaper and faster. It does not make the context smaller. <a href="04-context.html">Chapter 4</a> covers both.</p>
+  </section>
+
+  <section id="five-parts">
+    <h2>Five things people blur together</h2>
+    <p>"The AI remembered my preference." "The AI ran the tests." Sentences like these hide five different parts. Name them separately and most confusion goes away.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>The parts of an agent system</caption>
+        <thead><tr><th scope="col">Part</th><th scope="col">What it is</th><th scope="col">Holds state?</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Model invocation</th><td>One computation over one context</td><td>No</td></tr>
+          <tr><th scope="row">Provider service</th><td>The API around the model. It may store conversations, cache prefixes, and filter content.</td><td>Sometimes</td></tr>
+          <tr><th scope="row">Agent runtime</th><td>Your loop: builds context, calls the model, enforces policy, runs tools, records results</td><td>Yes, for the run</td></tr>
+          <tr><th scope="row">Persistent stores</th><td>Files, databases, checkpoints, memory stores</td><td>Yes, across runs</td></tr>
+          <tr><th scope="row">Per-call context</th><td>The exact input for one call, rebuilt every time</td><td>No, it is a view</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>When someone says "the agent remembers", ask which part holds the information. The answer is never the model invocation.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>The model is a stateless service. The runtime is your application server. The context is the request payload, assembled fresh for each request. The stores are your database.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a normal service parses its request strictly and behaves the same way each time. The model reads its whole input as guidance. It can follow instructions hidden in data, and it can answer differently to the same request.</p>
+    </aside>
+  </section>
+
+  <section id="intelligence-vs-agency">
+    <h2>Where intelligence lives, and where agency lives</h2>
+    <p>Intelligence is the part that understands and chooses. It reads the request and picks the next action. It writes the arguments, interprets the results, and writes the code or the summary. All of that happens inside model calls.</p>
+    <p>Agency is the ability to act in the world over time. That needs tools wired to real systems and permission to use them. It needs a loop that keeps going and state that persists. It also needs the authority to stop. All of that lives in the runtime.</p>
+    <p>A short version: the model proposes, the runtime disposes. The model selects actions. The runtime decides whether they happen and carries them out.</p>
+    <p>This split explains a lot. The same model behind different runtimes gives you different agents. Put it in a chat window and it is a chatbot. Give it file and shell tools and it is a coding agent. Give it a ticket queue and a refund tool and it is a support agent. A brilliant model in a runtime with no tools can only talk. A modest model in a careful runtime can be dependable within its limits.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Intelligence = the model's choice of the next action, made inside one call.</p>
+      <p>Agency = a loop + tools + permissions + persistent state, all in your code.</p>
+    </aside>
+  </section>
+
+  <section id="who-does-what">
+    <h2>Who does what</h2>
+    <p>Here are the questions that trip people up most often. The answers assume a typical agent like the ones in this course, where your code runs the loop.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>The model, the runtime, and the rest</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Does the model execute tools?</th><td>No. It emits a structured request. The runtime decides whether to run it, then runs it.</td></tr>
+          <tr><th scope="row">Does the model remember previous calls?</th><td>No. Each call sees only its context. The runtime, or a provider-stored conversation, supplies the history again.</td></tr>
+          <tr><th scope="row">Who decides to call the model again?</th><td>The runtime loop. The usual rule: if the reply contains tool calls, run them and call again.</td></tr>
+          <tr><th scope="row">Who stores state?</th><td>The runtime and its stores. Sometimes the provider stores the conversation for you.</td></tr>
+          <tr><th scope="row">Who executes shell commands?</th><td>Runtime code, inside whatever process, container, or VM you gave it.</td></tr>
+          <tr><th scope="row">Who enforces permissions?</th><td>Runtime code and the environment: the OS, containers, network rules, and other services. Never the model alone.</td></tr>
+          <tr><th scope="row">Who decides the task is finished?</th><td>It is split three ways. The model proposes, the runtime stops, and some check verifies. See the next section.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Now sort these yourself. For each job, pick who does it in a typical client-side agent.</p>
+    <div class="quiz-group">
+      <p class="quiz-score" aria-live="polite">Pick an answer for each card.</p>
+      <div class="quiz sorter">
+        <p class="q">Runs a shell command</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime. The model can only ask. Your code runs the command, wherever you let it run.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Chooses which tool to call next</p>
+        <ol class="options"><li data-correct>Model</li><li>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Model. It picks from the tools the runtime listed in the context. That choice is the core of its intelligence.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Remembers what happened in the previous call</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime. It re-sends the history. Some providers store it for you, which is still not the model.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Decides to call the model again</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime. The loop is ordinary code. The model's reply is an input to that decision.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Blocks a destructive command</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime, plus the environment around it. A model can decline to ask, but it cannot be your enforcement point.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Writes the arguments for a tool call</p>
+        <ol class="options"><li data-correct>Model</li><li>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Model. It generates them as structured output.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Checks that the arguments match the tool's schema</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime. Arguments are untrusted input, like any request body.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Retries after a network timeout</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime. Transient failures are handled in code. The model usually never sees them.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Reads an error message and changes approach</p>
+        <ol class="options"><li data-correct>Model</li><li>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Model. Understanding the error and choosing a new strategy is its job. The runtime's job is to put the error in front of it.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Summarizes old history to save space</p>
+        <ol class="options"><li>Model</li><li>Runtime</li><li data-correct>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Both. The runtime decides when to compact and what must survive. A model call usually writes the summary.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Proposes that the task is done</p>
+        <ol class="options"><li data-correct>Model</li><li>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Model. A reply with no tool calls, or a call to a finish tool, is a claim of completion.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">Stops the loop and checks the evidence of success</p>
+        <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime. It ends the loop and runs the checks. A separate verifier model can help, but your code decides what counts.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="finished">
+    <h2>"Finished" means three different things</h2>
+    <p>People say "the agent decided it was done". That sentence hides three separate events, and different parts can own each one.</p>
+    <div class="flow">
+      <span class="node model">Propose</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Stop</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Verify</span>
+    </div>
+    <ul>
+      <li><strong>Propose.</strong> The model replies without tool calls, or calls a finish tool. This is a claim.</li>
+      <li>Stop. The runtime ends the loop. It might stop on the claim. It might stop because a step budget or a cost budget ran out. It might stop on an error rule, or because a person pressed stop.</li>
+      <li>Verify. Something checks the evidence. Tests pass, a file exists, an API returned success, a person accepts the result, or a separate checker agrees.</li>
+    </ul>
+    <p>A stopped run is not a successful run. Decide your success criteria, and the evidence for them, before you build. For a coding agent, the criteria might be: the target test passes, the full suite passes, and no files outside <code>src/</code> changed. <a href="16-evaluation.html">Chapter 16</a> builds on this.</p>
+  </section>
+
+  <section id="spectrum">
+    <h2>From a single call to an agent</h2>
+    <p>"Agent" is not all or nothing. It helps to ask one question: who decides what happens next?</p>
+    <h3>A single call</h3>
+    <p>One model call does one job, such as "summarize this document". There is no loop.</p>
+    <h3>A workflow</h3>
+    <p>Code owns the control flow. The model fills in some steps. For example: extract fields from an invoice, validate them in code, and ask the model to fix any invalid field. You fixed the sequence in advance.</p>
+    <div class="flow">
+      <span class="node model">Extract</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Validate</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node model">Fix if invalid</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Save</span>
+    </div>
+    <h3>An agent</h3>
+    <p>The model chooses the next step, inside limits the runtime enforces. "Fix the failing test" is a good example. The steps depend on what the agent finds along the way.</p>
+    <div class="flow">
+      <span class="node model">Choose step</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Run it</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node model">Choose next step</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Until a stop rule</span>
+    </div>
+    <p>This is the course's working definition. In a workflow, code decides what happens next. In an agent, the model does, within limits you enforce.</p>
+    <p>Most real systems mix the two. A workflow can contain an agentic step. An agent can run inside deterministic guardrails. Prefer the least agentic design that solves the problem. Agents buy flexibility with cost, latency, and less predictable behavior.</p>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch, version 0</h2>
+    <p>Patch is the coding agent we will build up across the course. It works on a small team's web service: a Python API on PostgreSQL, deployed on AWS, with a TypeScript front end.</p>
+    <p>In version 0, Patch is not an agent at all. You paste a failing test's output and the relevant file. One model call suggests a fix. You apply it, run the tests yourself, and paste the results back. You are the loop.</p>
+<pre><code>suggestion = model([system_prompt(), user(test_output + file_text)])
+# you: apply the fix, run the tests, paste the output back</code></pre>
+    <p>Chapter 1 replaces you with a loop.</p>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Believing the model remembers</h3>
+      <dl>
+        <dt>Why</dt><dd>The runtime re-sends history so smoothly that the model seems to recall it. Then a history trim or a new session breaks behavior you assumed was "learned".</dd>
+        <dt>Detect</dt><dd>Log the exact context of every call. If a fact is not in the context, the model did not use it.</dd>
+        <dt>Mitigate</dt><dd>Decide where every needed fact lives and how it reaches the context. Chapters 4 and 5 cover this.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Trusting "done"</h3>
+      <dl>
+        <dt>Why</dt><dd>A reply with no tool calls is a claim. Models sometimes claim success they did not achieve.</dd>
+        <dt>Detect</dt><dd>Compare claims with evidence, such as test results or API responses.</dd>
+        <dt>Mitigate</dt><dd>Write success criteria into the runtime and check them before reporting success.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Putting policy in the prompt</h3>
+      <dl>
+        <dt>Why</dt><dd>"Never delete files" written in the system prompt is a request. The model can misread it, and injected text can argue against it.</dd>
+        <dt>Detect</dt><dd>Try to talk the agent out of the rule. If wording can change the outcome, the rule is not enforced.</dd>
+        <dt>Mitigate</dt><dd>Enforce rules in runtime code and in the environment. Chapter 10 shows how.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Blaming the wrong part</h3>
+      <dl>
+        <dt>Why</dt><dd>Everything looks like "the AI did something weird". It might be a model choice, a runtime bug, or a missing piece of context.</dd>
+        <dt>Detect</dt><dd>Traces that separate model outputs from runtime actions, with call ids.</dd>
+        <dt>Mitigate</dt><dd>Record every model call, every tool execution, and every result. Read traces before changing prompts.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Whether this needs an agent at all, or a workflow is enough.</li>
+          <li>Which actions the agent may take, and on which systems.</li>
+          <li>What counts as done, and what evidence proves it.</li>
+          <li>Where state lives, and which part holds each piece.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The loop code and the provider API calls.</li>
+          <li>Message formatting for a specific vendor.</li>
+          <li>Retries for network errors.</li>
+          <li>Logging and trace plumbing.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">What technically makes something an agent rather than a single LLM call? (Q1)</p>
+      <details class="answer"><summary>Answer</summary><p>A runtime loop in which the model chooses the next action. The runtime executes that action, feeds the result back as context, and repeats until a stop rule fires. A single call has no loop, no actions, and no feedback.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Where does agency live? (Q3)</p>
+      <ol class="options">
+        <li>In the model's weights</li>
+        <li data-correct>In the runtime: the loop, the tools, the permissions, and the state</li>
+        <li>In the system prompt</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>In the runtime. The model selects actions. The ability to carry them out, keep going, and stop lives in your code.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">What does the model know at the moment of a call? (Q4)</p>
+      <ol class="options">
+        <li>Everything the agent has seen so far</li>
+        <li data-correct>What it learned in training, plus this call's context</li>
+        <li>Its training, plus everything in the provider's storage</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>Training plus this call's context. Stored conversations and memory only matter once something puts them into the context.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">The model replies with no tool calls. Is the task done?</p>
+      <details class="answer"><summary>Answer</summary><p>Not necessarily. The model proposed that it is done, and the runtime probably stops the loop. Success still needs evidence, such as passing tests.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>The model is a function: context in, response out. It runs nothing and keeps nothing between calls.</li>
+      <li>An agent is a loop of ordinary code around that function. Only one line calls the model.</li>
+      <li>Intelligence lives in the model's choices. Agency lives in the runtime's loop, tools, permissions, and state.</li>
+      <li>"Finished" splits into propose, stop, and verify. Only evidence counts as success.</li>
+      <li>Prefer the least agentic design that works. A workflow is often enough.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

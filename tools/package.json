@@ -1,0 +1,9 @@
+{
+  "name": "how-agents-work-tools",
+  "private": true,
+  "type": "module",
+  "description": "Test tooling for the course site. Not needed to view the site.",
+  "devDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}
