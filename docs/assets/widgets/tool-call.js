@@ -215,103 +215,103 @@
     valid: {
       label: 'Valid call',
       user: 'Where do we check token expiry?',
-      note: 'Vendor APIs name these fields differently. The shape is the same everywhere: a tool name, arguments, an id, and a result tied to that id.',
+      note: 'Vendors name these fields differently, but every API has the same parts: a tool name, arguments, an id, and a result tied to that id.',
       script: [
-        { do: 'advertise', tool: 'search_files', title: 'The runtime lists the tools',
-          say: 'Before the call, the runtime puts the tool definitions into the context. Each has a name, a description, and a schema for its arguments. That text is all the model knows about the tool.' },
+        { do: 'advertise', tool: 'search_files', title: 'Your code lists the tools',
+          say: "Before it calls the model, your code puts each tool's name, description, and argument schema into the context. That text is all the model knows about the tool." },
         { do: 'request', calls: [{ name: 'search_files', args: { query: 'expires_at', max_results: 20 }, ms: 12 }], title: 'The model asks for a call',
-          say: 'The model replies with a request: a tool name, arguments, and an id. Nothing has run. A request is only output.' },
-        { do: 'validate', title: 'The runtime checks the schema',
-          say: 'The runtime treats the arguments as untrusted input. It checks them against the schema, the way a server checks a request body.' },
-        { do: 'policy', title: 'The runtime checks policy',
-          say: 'Valid is not the same as allowed. This tool only reads, and only inside the workspace, so the policy lets it run without asking anyone.' },
-        { do: 'execute', title: 'The runtime runs the tool',
-          say: 'Now the runtime calls ordinary code: the real search function. This is the first moment anything touches the files.' },
+          say: 'The model replies with a request: a tool name, arguments, and an id. Nothing has run yet, because the model can only write text.' },
+        { do: 'validate', title: 'Your code checks the arguments',
+          say: 'Your code checks the arguments against the schema, the way a server checks a request body. Both arguments match, so the call moves on.' },
+        { do: 'policy', title: 'Your code checks its rules',
+          say: 'Next, your code checks whether this call is allowed. search_files only reads, and only inside the workspace, so it may run without asking anyone.' },
+        { do: 'execute', title: 'The tool runs',
+          say: 'Your code calls the real search function. This is the first moment anything touches the files.' },
         { do: 'result', title: 'The result goes back',
-          say: 'The runtime wraps the output as a tool result with the same id, call_1, and appends it to the history. The model reads it on its next call.' },
+          say: 'Your code adds the output to the history as a result with the same id, call_1. The model will read it the next time your code calls it.' },
         { do: 'request', calls: [{ name: 'read_file', args: { path: 'auth/session.py' } }], title: 'The model is called again',
-          say: 'The runtime calls the model again with the whole history. The model reads the matches and asks for auth/session.py, as call_2. The cycle repeats.' }
+          say: 'Your code calls the model again with the whole history. The model reads the matches and asks to read auth/session.py, as call_2.' }
       ]
     },
 
     'bad-args': {
-      label: 'Bad argument type',
-      tag: 'Possible when arguments are not schema-constrained. Some providers can force the arguments to match the schema. Then this type error cannot happen, but a wrong value of the right type still can.',
+      label: 'Wrong argument type',
+      tag: 'Possible when arguments are not schema-constrained. Some providers can force the arguments to match the schema, and then this error cannot happen. A wrong value of the right type still can.',
       user: 'Show me every place that uses expires_at.',
       script: [
         { do: 'request', calls: [{ name: 'search_files', args: { query: 'expires_at', max_results: 'all' } }], title: 'The model asks for a call',
-          say: 'The user wants every match, so the model writes "all" for max_results. The schema says integer. Nothing forced the model to follow it.' },
-        { do: 'validate', title: 'The schema check fails',
-          say: 'max_results must be an integer from 1 to 50. The runtime does not guess a number, and it does not crash the run.' },
-        { do: 'result', title: 'The error goes back as a result',
-          say: 'The error becomes the result of call_1, marked as an error. It says what was wrong and how to fix it. Nothing ran.' },
+          say: 'The user wants every match, so the model writes "all" for max_results, even though the schema asks for a number.' },
+        { do: 'validate', title: 'The argument check fails',
+          say: 'max_results must be a whole number from 1 to 50, so the check fails. Your code does not guess a number, and it does not stop the run.' },
+        { do: 'result', title: 'The error goes back as the result',
+          say: 'Your code sends the error back as the result of call_1. The message says what was wrong and how to fix it, and nothing ran.' },
         { do: 'request', calls: [{ name: 'search_files', args: { query: 'expires_at', max_results: 50 }, ms: 14 }], title: 'The model retries',
-          say: 'The model reads the error and fixes its request. The retry is a new call with a new id, call_2. The model chose the fix, not the runtime.' },
+          say: 'The model reads the error and fixes its request. The retry is a new call with a new id, call_2.' },
         { do: 'pass', title: 'The retry runs',
-          say: 'call_2 passes the schema and the policy, runs, and returns the matches. The history keeps both attempts, each tied to its own id.' }
+          say: 'call_2 passes both checks, so your code runs it and sends back the matches. The history keeps both attempts, each with its own id.' }
       ]
     },
 
     policy: {
-      label: 'Blocked by policy',
+      label: 'Blocked by a rule',
       user: 'Is the token lifetime too short in production?',
-      note: 'Stale objects fail in a similar way. Say the model asks to edit text it read ten steps ago, and the file has changed since. The arguments are valid and the path is allowed. The edit tool should refuse ("old text not found, read the file again") instead of guessing.',
+      note: 'A stale object fails in a similar way. Say the model asks to edit text it read ten steps ago, but the file has changed since. The arguments are valid and the path is allowed, yet the edit tool should refuse ("old text not found, read the file again") instead of guessing.',
       script: [
         { do: 'request', calls: [{ name: 'read_file', args: { path: '../deploy/prod.env' } }], title: 'The model asks for a call',
-          say: 'The model wants the production settings. It asks to read ../deploy/prod.env, one folder above the repository.' },
-        { do: 'validate', title: 'The schema check passes',
-          say: 'The path is a string, so the schema check passes. A schema checks shape, not meaning.' },
-        { do: 'policy', title: 'The policy check denies it',
-          say: 'The runtime resolves the path first, so "../" cannot sneak past. It lands outside the workspace. The policy denies the call before anything runs.' },
-        { do: 'result', title: 'The denial goes back as a result',
-          say: 'The denial becomes the result of call_1. The file was never opened. No wording in a later request can change that, because the check is code.' },
-        { do: 'request', calls: [{ name: 'read_file', args: { path: 'config/settings.py' } }], title: 'The model adapts',
-          say: 'The model looks for the setting inside the repository instead. It asks for config/settings.py, as call_2.' },
+          say: 'The model wants the production settings, so it asks to read ../deploy/prod.env, one folder above the repository.' },
+        { do: 'validate', title: 'The argument check passes',
+          say: 'The path is a string, so the schema check passes. The schema checks only the form of the argument, not where the path points.' },
+        { do: 'policy', title: 'Your rules deny the call',
+          say: 'Your code works out the full path first, so the "../" cannot sneak past. The path is outside the workspace, so the rules deny the call before anything runs.' },
+        { do: 'result', title: 'The denial goes back as the result',
+          say: 'Your code sends the denial back as the result of call_1. The file was never opened, and no wording in a later request can change that, because the check is code.' },
+        { do: 'request', calls: [{ name: 'read_file', args: { path: 'config/settings.py' } }], title: 'The model tries another way',
+          say: 'The model looks for the setting inside the repository instead, and asks for config/settings.py as call_2.' },
         { do: 'pass', title: 'The new call runs',
-          say: 'call_2 passes both checks and runs. The model can report the default from the code, and say it could not see the production value.' }
+          say: 'call_2 passes both checks and runs. The model can now report the default from the code, and say it could not see the production value.' }
       ]
     },
 
     parallel: {
-      label: 'Parallel calls',
+      label: 'Two calls at once',
       user: "Explain how a token's expiry is set and checked.",
-      note: "Only independent calls can run in parallel. If one call needs another's result, such as reading a file that a search has not found yet, the calls must run in order, in separate replies. Some runtimes also refuse two writes to the same file in one reply.",
+      note: "Only independent calls can run together. If one call depends on another's result, such as reading a file that a search has not found yet, they must run in order, in separate replies. Some runtimes also refuse two writes to the same file in one reply.",
       script: [
         { do: 'request', calls: [{ name: 'read_file', args: { path: 'auth/tokens.py' }, ms: 35 }, { name: 'read_file', args: { path: 'auth/session.py' }, ms: 18 }],
           title: 'The model asks for two calls',
-          say: "The model asks for two files in one reply, call_1 and call_2. Neither needs the other's result, so they can run at the same time." },
+          say: "The model asks for two files in one reply, call_1 and call_2. Neither read needs the other's result, so your code can run them at the same time." },
         { do: 'checks', title: 'Both pass the checks',
-          say: 'Both pass the schema and the policy. They only read, and only inside the workspace.' },
+          say: 'Both calls pass the schema check and the rules, because they only read files inside the workspace.' },
         { do: 'execute', title: 'Both run at once',
-          say: 'The runtime starts both. call_2 finishes first. Then call_1 fails, because there is no auth/tokens.py. Completion order is not request order.' },
+          say: 'Your code starts both. call_2 finishes first, and then call_1 fails because auth/tokens.py does not exist.' },
         { do: 'result', title: 'Results attach by id',
-          say: 'The runtime appends one result per call, each tied to its id. The error belongs to call_1 and the file to call_2. One failure does not throw away the other result.' },
-        { do: 'request', calls: [{ name: 'read_file', args: { path: 'auth/token_utils.py' } }], title: 'The model handles the partial failure',
-          say: 'The model keeps the session code it got. It retries the missing file under the name the error suggested, as call_3.' }
+          say: 'Your code sends back one result per call, each with its id, so the finishing order does not matter. The error for call_1 does not erase the file from call_2.' },
+        { do: 'request', calls: [{ name: 'read_file', args: { path: 'auth/token_utils.py' } }], title: 'The model handles the failure',
+          say: 'The model keeps the code it got and retries the missing file under the name the error suggested, as call_3.' }
       ]
     },
 
     large: {
-      label: 'Large output',
+      label: 'Huge output',
       user: 'Run the whole test suite and tell me what fails.',
-      note: 'Limits here are illustrative. This runtime saves any output over ' + LIMIT.maxLines + ' lines and keeps the first ' + LIMIT.head + ' and the last ' + LIMIT.tail + '. Real limits are larger and often counted in tokens.',
+      note: 'Limits here are illustrative: this runtime saves any output over ' + LIMIT.maxLines + ' lines and keeps the first ' + LIMIT.head + ' and the last ' + LIMIT.tail + '. Real limits are larger and often counted in tokens.',
       script: [
         { do: 'request', calls: [{ name: 'run_command', args: { cmd: 'pytest -v' }, ms: 48310 }], title: 'The model asks for a call',
-          say: 'The model asks to run the whole suite with verbose output, as call_1.' },
+          say: 'The model asks to run the whole test suite with verbose output, as call_1.' },
         { do: 'checks', title: 'Both checks pass',
-          say: 'The schema check passes. pytest is on the command allowlist, so the policy allows it.' },
+          say: 'The arguments match the schema, and pytest is on the list of allowed commands, so the rules allow the call.' },
         { do: 'execute', title: 'The command runs',
-          say: 'The suite runs for 48 seconds and exits with code 1. It prints ' + fmt(LOG_LINES) + ' lines, about ' + fmt(Math.round(LOG.length / 4000) * 1000) + ' tokens. A failing test run is still a successful tool call: the output is the information.' },
-        { do: 'limit', title: 'The runtime limits the output',
-          say: 'That much text would crowd the context. The runtime saves the full output to ' + OUT_DIR + 'call_1.log. It keeps the head and the tail, because the tail holds the summary.' },
+          say: 'The suite runs for 48 seconds and prints ' + fmt(LOG_LINES) + ' lines, about ' + fmt(Math.round(LOG.length / 4000) * 1000) + ' tokens.' },
+        { do: 'limit', title: 'Your code limits the output',
+          say: 'That much text would crowd the context, so your code saves the full output to ' + OUT_DIR + 'call_1.log and keeps only the first and last few lines.' },
         { do: 'result', title: 'The preview goes back',
-          say: 'The result says it was cut, how much was cut, and where the rest is. Without that marker, the model could take the preview for the whole output.' },
-        { do: 'request', calls: [{ name: 'search_files', args: { query: 'test_login_expired_token', path: OUT_DIR + 'call_1.log' }, ms: 9 }], title: 'The model follows the reference',
-          say: 'The model searches the saved log for the failing test, as call_2. It does not rerun the suite or ask for the whole log.' },
+          say: 'The marker in the middle of the preview says how many lines were cut and where the full log is. Without it, the model could take the preview for the whole output.' },
+        { do: 'request', calls: [{ name: 'search_files', args: { query: 'test_login_expired_token', path: OUT_DIR + 'call_1.log' }, ms: 9 }], title: 'The model follows the pointer',
+          say: 'The model searches the saved log for the failing test, as call_2, instead of running the whole suite again.' },
         { do: 'pass', title: 'The search runs',
-          say: 'call_2 returns the matching lines with line numbers. The model can now read just that part of the log.' },
-        { do: 'note', title: 'Structured output breaks when cut',
-          say: 'Suppose the tool had returned JSON instead. A cut at a character limit leaves invalid JSON. A better limit keeps the structure, drops items, counts them, and points to the full file.',
+          say: 'call_2 returns the matching lines with line numbers, so the model can read just that part of the log next.' },
+        { do: 'note', title: 'Cutting JSON breaks it',
+          say: 'Suppose the tool had returned JSON instead. Cutting it at a character limit leaves invalid JSON, so a better limit drops whole items and says how many it dropped.',
           points: ['Keep the top-level shape.', 'Drop whole items, not characters.', 'Say how many items were dropped.', 'Point to the full output.'] }
       ]
     }
@@ -335,7 +335,7 @@
     var executed = [];
     var artifacts = [];
     var counters = { modelCalls: 0, requested: 0, executed: 0, blocked: 0 };
-    var view = { kind: 'idle', title: 'Model output', text: '(the model has not been called yet)' };
+    var view = { kind: 'idle', title: 'What the model asked for', text: '(nothing yet)' };
     var steps = [];
     var seq = 0;
 
@@ -414,7 +414,7 @@
       var alt = null;
       if (d === 'advertise') {
         var def = TOOLS[it.tool];
-        view = { kind: 'tool', title: 'Tool definition, as sent in the context', json: { name: it.tool, description: def.description, parameters: def.parameters } };
+        view = { kind: 'tool', title: 'What the model is told about ' + it.tool, json: { name: it.tool, description: def.description, parameters: def.parameters } };
       } else if (d === 'request') {
         if (batch.some(function (r) { return !r.answered; })) throw new Error('model called again before every call had a result');
         counters.modelCalls += 1;
@@ -425,11 +425,11 @@
         calls = calls.concat(batch);
         counters.requested += tc.length;
         latest = [];
-        view = { kind: 'request', title: 'Model output: a request, not an action', json: msg };
+        view = { kind: 'request', title: 'What the model asked for', json: msg };
       } else if (d === 'note') {
         var report = { total: SUITE.length, passed: SUITE.length - SUITE.filter(failed).length, failed: SUITE.filter(failed).length, tests: SUITE };
-        view = { kind: 'note', title: 'Cut at a character limit (shown short)', text: naiveCut(report, 260), invalid: true };
-        alt = { title: 'Structure kept: valid JSON', json: limitJson(report, 'tests', failed, OUT_DIR + 'call_1.json') };
+        view = { kind: 'note', title: 'JSON cut at a character limit', text: naiveCut(report, 260), invalid: true };
+        alt = { title: 'Better: whole items dropped, and the JSON stays valid', json: limitJson(report, 'tests', failed, OUT_DIR + 'call_1.json') };
       }
       if (d === 'validate' || d === 'checks' || d === 'pass') batch.forEach(checkSchema);
       if (d === 'policy' || d === 'checks' || d === 'pass') batch.forEach(checkPolicy);
@@ -474,14 +474,15 @@
   /* ---------- widget ---------- */
 
   var STAGES = [
-    { key: 'advertise', label: 'Advertise', role: 'runtime' },
-    { key: 'request', label: 'Model requests', role: 'model' },
-    { key: 'validate', label: 'Validate', role: 'runtime' },
-    { key: 'policy', label: 'Check policy', role: 'runtime' },
-    { key: 'execute', label: 'Execute', role: 'tool' },
-    { key: 'result', label: 'Return result', role: 'runtime' }
+    { key: 'advertise', who: 'Your code', what: 'lists the tools', role: 'runtime' },
+    { key: 'request', who: 'Model', what: 'asks for a call', role: 'model' },
+    { key: 'validate', who: 'Your code', what: 'checks the arguments', role: 'runtime' },
+    { key: 'policy', who: 'Your code', what: 'checks its rules', role: 'runtime' },
+    { key: 'execute', who: 'Tool', what: 'does the work', role: 'tool' },
+    { key: 'result', who: 'Your code', what: 'returns the result', role: 'runtime' }
   ];
-  var ACTOR = { runtime: 'Runtime', model: 'Model', tool: 'Tool' };
+  var STAGE_KEYS = STAGES.map(function (s) { return s.key; });
+  var ACTOR = { runtime: 'Your code', model: 'Model', tool: 'Tool' };
 
   AC.widgets['tool-call'] = function (root) {
     var h = AC.h;
@@ -490,7 +491,7 @@
     var current = SCENARIOS[start] ? start : keys[0];
     var steps = build(current);
 
-    var frame = h('div', { class: 'w-frame' });
+    var frame = h('div', { class: 'w-frame tc' });
     frame.appendChild(h('div', { class: 'w-head' },
       h('p', { class: 'w-title', text: root.getAttribute('data-title') || 'The life of a tool call' }),
       h('p', { class: 'w-sub', text: 'Times and sizes are illustrative.' })));
@@ -513,19 +514,21 @@
 
     var intro = h('div', { class: 'tc-intro' });
     body.appendChild(intro);
-    var strip = h('ol', { class: 'tc-strip', 'aria-hidden': 'true' });
-    STAGES.forEach(function (s, n) {
-      strip.appendChild(h('li', null,
-        h('span', { class: 'tc-stage ' + s.role, 'data-key': s.key, text: s.label }),
-        n < STAGES.length - 1 ? h('span', { class: 'tc-arrow', text: '→' }) : null));
-    });
-    body.appendChild(strip);
 
-    var counters = h('div', { class: 'w-counters', 'aria-label': 'Counters' });
+    // The main picture: the six stages of one call, colored by who acts.
+    var pipe = h('ol', { class: 'tc-pipe', 'aria-hidden': 'true' });
+    STAGES.forEach(function (s, n) {
+      pipe.appendChild(h('li', { class: 'tc-stage ' + s.role, 'data-key': s.key },
+        h('span', { class: 'tc-stage-who', text: (n + 1) + ' · ' + s.who }),
+        h('span', { class: 'tc-stage-what', text: s.what })));
+    });
+    body.appendChild(pipe);
+
+    var stats = h('div', { class: 'tc-stats', 'aria-label': 'Counts' });
     var paneA = h('div', { class: 'w-panel tc-panel' });
     var paneB = h('div', { class: 'w-panel tc-panel' });
     var paneC = h('div', { class: 'w-panel tc-panel tc-wide' });
-    var note = h('p', { class: 'w-note' });
+    var note = h('p', { class: 'w-note tc-note' });
 
     function paintIntro() {
       var sc = SCENARIOS[current];
@@ -561,7 +564,7 @@
       return pre;
     }
 
-    function statusRow(dl, label, cls, word, detail) {
+    function row(dl, label, cls, word, detail) {
       dl.appendChild(h('dt', { text: label }));
       dl.appendChild(h('dd', null, h('span', { class: 'w-status ' + cls, text: word }), detail ? ' ' + detail : ''));
     }
@@ -570,13 +573,13 @@
       paneA.textContent = '';
       paneA.appendChild(h('p', { class: 'w-panel-title', text: s.view.title }));
       paneA.appendChild(codeBlock(s.view.text, s.view.highlight));
-      if (s.view.highlight.length) paneA.appendChild(h('p', { class: 'w-note', text: 'Marked: the argument the runtime rejected.' }));
-      if (s.view.invalid) paneA.appendChild(h('p', { class: 'w-warn', text: 'Invalid JSON: the text stops in the middle of an object. A parser fails here.' }));
+      if (s.view.highlight.length) paneA.appendChild(h('p', { class: 'w-note', text: 'Marked: the argument your code rejected.' }));
+      if (s.view.invalid) paneA.appendChild(h('p', { class: 'w-warn', text: 'Invalid JSON: the text stops in the middle of an object, so a parser fails here.' }));
     }
 
     function paintB(s) {
       paneB.textContent = '';
-      paneB.appendChild(h('p', { class: 'w-panel-title', text: s.points ? 'Limiting structured output' : 'Runtime: checks and execution' }));
+      paneB.appendChild(h('p', { class: 'w-panel-title', text: s.points ? 'How to limit structured output' : 'What your code checked and ran' }));
       if (s.points) {
         var ul = h('ul', { class: 'tc-points' });
         s.points.forEach(function (p) { ul.appendChild(h('li', { text: p })); });
@@ -584,10 +587,11 @@
         return;
       }
       if (!s.batch.length) {
+        paneB.appendChild(h('p', { class: 'tc-quiet', text: 'Nothing has been asked for yet. These tools are on offer, with what each can change:' }));
         var dl0 = h('dl', { class: 'w-kv' });
         Object.keys(TOOLS).forEach(function (n) { dl0.appendChild(h('dt', { text: n })); dl0.appendChild(h('dd', { text: TOOLS[n].effect })); });
         paneB.appendChild(dl0);
-        paneB.appendChild(h('p', { class: 'w-note', text: 'Policy in this runtime: file tools stay inside ' + ROOT + '. Commands must match the allowlist: ' + ALLOW_CMDS.join(', ') + '. Nothing has been requested yet.' }));
+        paneB.appendChild(h('p', { class: 'w-note', text: 'Rules in this runtime: file tools stay inside ' + ROOT + ', and commands must be on the list: ' + ALLOW_CMDS.join(', ') + '.' }));
         return;
       }
       var recs = s.calls.filter(function (r) { return s.batch.indexOf(r.id) !== -1; });
@@ -595,27 +599,29 @@
         var card = h('div', { class: 'tc-call' });
         card.appendChild(h('p', { class: 'tc-call-head' }, h('code', { text: r.id }), ' ' + r.name));
         var dl = h('dl', { class: 'w-kv' });
-        if (!r.schema) statusRow(dl, 'schema', 'mid', 'pending');
-        else if (r.schema.ok) statusRow(dl, 'schema', 'ok', 'pass', 'matches the schema');
-        else statusRow(dl, 'schema', 'bad', 'fail', r.schema.errors.map(function (e) { return e.message; }).join(' '));
-        if (r.policy) statusRow(dl, 'policy', r.policy.ok ? 'ok' : 'bad', r.policy.ok ? 'allow' : 'deny', r.policy.reason);
-        else statusRow(dl, 'policy', 'mid', r.schema && !r.schema.ok ? 'skipped' : 'pending');
-        if (!r.run) statusRow(dl, 'run', 'mid', 'pending', 'nothing has run');
-        else if (r.run.status === 'not run') statusRow(dl, 'run', 'bad', 'not run', 'blocked before execution');
-        else if (r.run.status === 'failed') statusRow(dl, 'run', 'bad', 'failed', r.run.error + ' (' + ms(r.run.ms) + ')');
-        else statusRow(dl, 'run', 'ok', 'done', ms(r.run.ms) + (r.artifact ? ', full output saved to ' + r.artifact : ''));
+        if (!r.schema) row(dl, 'Arguments', 'mid', 'waiting', 'not checked yet');
+        else if (r.schema.ok) row(dl, 'Arguments', 'ok', 'ok', 'match the schema');
+        else row(dl, 'Arguments', 'bad', 'wrong', r.schema.errors.map(function (e) { return e.message; }).join(' '));
+        if (r.policy) row(dl, 'Rules', r.policy.ok ? 'ok' : 'bad', r.policy.ok ? 'allowed' : 'denied', r.policy.reason);
+        else if (r.schema && !r.schema.ok) row(dl, 'Rules', 'mid', 'skipped', 'the arguments were wrong');
+        else row(dl, 'Rules', 'mid', 'waiting', 'not checked yet');
+        var stopped = (r.schema && !r.schema.ok) || (r.policy && !r.policy.ok);
+        if (stopped || (r.run && r.run.status === 'not run')) row(dl, 'Ran', 'bad', 'no', 'blocked before running');
+        else if (!r.run) row(dl, 'Ran', 'mid', 'not yet');
+        else if (r.run.status === 'failed') row(dl, 'Ran', 'bad', 'failed', r.run.error + ' (' + ms(r.run.ms) + ')');
+        else row(dl, 'Ran', 'ok', 'yes', 'in ' + ms(r.run.ms) + (r.artifact ? '. Full output saved to ' + r.artifact : ''));
         card.appendChild(dl);
         paneB.appendChild(card);
       });
       var ran = recs.filter(function (r) { return r.run && r.run.ms; });
       if (ran.length > 1) {
         var max = Math.max.apply(null, ran.map(function (r) { return r.run.ms; }));
-        var bars = h('div', { class: 'tc-bars' }, h('p', { class: 'w-panel-title', text: 'Completion order' }));
+        var bars = h('div', { class: 'tc-bars' }, h('p', { class: 'w-panel-title', text: 'Which finished first' }));
         ran.forEach(function (r) {
           bars.appendChild(h('div', { class: 'tc-bar-row' },
             h('code', { text: r.id }),
             h('span', { class: 'tc-bar-track' }, h('span', { class: 'tc-bar ' + (r.run.status === 'done' ? 'tool' : 'is-failed'), style: { width: (100 * r.run.ms / max) + '%' } })),
-            h('span', { class: 'tc-bar-label', text: ms(r.run.ms) + ', ' + (r.run.order === 1 ? '1st' : r.run.order === 2 ? '2nd' : r.run.order + 'th') + ', ' + r.run.status })));
+            h('span', { class: 'tc-bar-label', text: (r.run.order === 1 ? 'first' : 'second') + ', ' + r.run.status + ', ' + ms(r.run.ms) })));
         });
         paneB.appendChild(bars);
       }
@@ -626,53 +632,55 @@
       if (s.alt) {
         paneC.appendChild(h('p', { class: 'w-panel-title', text: s.alt.title }));
         paneC.appendChild(codeBlock(s.alt.text));
-      } else if (s.latest.length) {
-        paneC.appendChild(h('p', { class: 'w-panel-title', text: s.latest.length > 1 ? 'Tool results, appended to the history' : 'Tool result, appended to the history' }));
-        var grid = h('div', { class: 'tc-results' });
-        s.latest.forEach(function (m) {
-          var card = h('div', { class: 'tc-result' });
-          var dl = h('dl', { class: 'w-kv' });
-          dl.appendChild(h('dt', { text: 'tool_call_id' }));
-          dl.appendChild(h('dd', null, h('code', { text: m.tool_call_id })));
-          dl.appendChild(h('dt', { text: 'is_error' }));
-          dl.appendChild(h('dd', null, h('span', { class: 'w-status ' + (m.is_error ? 'bad' : 'ok'), text: m.is_error ? 'true' : 'false' })));
-          if (m.truncated) {
-            dl.appendChild(h('dt', { text: 'truncated' }));
-            dl.appendChild(h('dd', { text: 'true, full output: ' + m.artifact }));
-          }
-          card.appendChild(dl);
-          card.appendChild(h('pre', { class: 'tc-content', text: m.content }));
-          grid.appendChild(card);
-        });
-        paneC.appendChild(grid);
       } else {
-        paneC.appendChild(h('p', { class: 'w-panel-title', text: 'Back to the model' }));
-        paneC.appendChild(h('p', { class: 'tc-idle', text: 'No result yet. The model is not running. It sees a result only when the runtime calls it again.' }));
+        paneC.appendChild(h('p', { class: 'w-panel-title', text: 'What goes back to the model' }));
+        if (s.latest.length) {
+          var grid = h('div', { class: 'tc-results' });
+          s.latest.forEach(function (m) {
+            var card = h('div', { class: 'tc-result' });
+            var dl = h('dl', { class: 'w-kv' });
+            dl.appendChild(h('dt', { text: 'For call' }));
+            dl.appendChild(h('dd', null, h('code', { text: m.tool_call_id })));
+            row(dl, 'Error', m.is_error ? 'bad' : 'ok', m.is_error ? 'yes' : 'no');
+            if (m.truncated) row(dl, 'Cut short', 'mid', 'yes', 'full output in ' + m.artifact);
+            card.appendChild(dl);
+            card.appendChild(h('pre', { class: 'tc-content', text: m.content }));
+            grid.appendChild(card);
+          });
+          paneC.appendChild(grid);
+        } else {
+          paneC.appendChild(h('p', { class: 'tc-idle', text: 'Nothing yet. The model is not running, and it sees a result only when your code calls it again.' }));
+        }
       }
-      var hist = h('ol', { class: 'tc-hist', 'aria-label': 'History the model will see on its next call' });
+      var hist = h('ol', { class: 'tc-hist', 'aria-label': 'History so far' });
       s.messages.forEach(function (m) {
-        var label = m.role === 'assistant' ? 'assistant: ' + m.tool_calls.map(function (c) { return c.id; }).join(', ')
-          : m.role === 'tool' ? 'tool: ' + m.tool_call_id + (m.is_error ? ' (error)' : m.truncated ? ' (truncated)' : '') : m.role;
+        var label = m.role === 'assistant' ? 'model asks: ' + m.tool_calls.map(function (c) { return c.id; }).join(', ')
+          : m.role === 'tool' ? 'result: ' + m.tool_call_id + (m.is_error ? ' (error)' : m.truncated ? ' (cut short)' : '') : 'user asks';
         hist.appendChild(h('li', { class: 'w-pill ' + (m.role === 'assistant' ? 'model' : m.role === 'tool' ? 'tool' : 'user'), text: label }));
       });
-      paneC.appendChild(h('p', { class: 'w-panel-title tc-hist-title', text: 'History for the next model call' }));
+      paneC.appendChild(h('p', { class: 'w-panel-title tc-hist-title', text: 'History so far' }));
       paneC.appendChild(hist);
     }
 
     function render(i, narration) {
       var s = steps[i];
-      strip.querySelectorAll('.tc-stage').forEach(function (n) {
+      var first = STAGE_KEYS.indexOf(s.stages[0]);
+      pipe.querySelectorAll('.tc-stage').forEach(function (n, idx) {
         var k = n.getAttribute('data-key');
-        n.classList.toggle('is-active', s.stages.indexOf(k) !== -1);
-        n.classList.toggle('is-skipped', s.skipped.indexOf(k) !== -1);
+        var active = s.stages.indexOf(k) !== -1;
+        var skipped = s.skipped.indexOf(k) !== -1;
+        n.classList.toggle('is-active', active);
+        n.classList.toggle('is-skipped', skipped);
+        n.classList.toggle('is-done', !active && !skipped && idx < first);
       });
       narration.appendChild(h('p', { class: 'tc-say' },
         h('span', { class: 'badge ' + s.actor, text: ACTOR[s.actor] }),
         h('span', { class: 'w-step-title', text: s.title + '. ' }), s.say));
-      counters.textContent = '';
-      [['Model calls', s.counters.modelCalls], ['Tool calls requested', s.counters.requested],
-        ['Executed', s.counters.executed], ['Blocked before running', s.counters.blocked]].forEach(function (c) {
-        counters.appendChild(h('span', { class: 'w-counter', text: c[0] + ': ' + c[1] }));
+      stats.textContent = '';
+      var ranN = s.counters.executed;
+      var blockedN = s.counters.blocked;
+      [[ranN, ranN === 1 ? 'call ran' : 'calls ran'], [blockedN, (blockedN === 1 ? 'call' : 'calls') + ' blocked before running']].forEach(function (c) {
+        stats.appendChild(h('span', { class: 'tc-stat' }, h('span', { class: 'tc-stat-num', text: String(c[0]) }), h('span', { class: 'tc-stat-label', text: c[1] })));
       });
       paintA(s);
       paintB(s);
@@ -681,7 +689,7 @@
 
     var stepper = AC.stepper({ count: function () { return steps.length; }, render: render });
     body.appendChild(stepper.el);
-    body.appendChild(counters);
+    body.appendChild(stats);
     body.appendChild(h('div', { class: 'w-grid cols-2 tc-grid' }, paneA, paneB, paneC));
     body.appendChild(note);
     root.appendChild(frame);

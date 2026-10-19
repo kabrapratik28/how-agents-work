@@ -294,6 +294,7 @@
       var details = q.querySelector('details.answer');
       var sorter = q.classList.contains('sorter');
       if (sorter && details) details.hidden = true;
+      if (sorter && ol.children.length > 3) q.classList.add('stacked');
       var opts = [];
       Array.prototype.slice.call(ol.children).forEach(function (li, idx) {
         var btn = AC.h('button', { type: 'button', class: 'opt-btn' });
@@ -426,12 +427,10 @@
     document.body.appendChild(AC.h('nav', { class: 'toc', 'aria-label': 'On this page' }, AC.h('p', { class: 'toc-title', text: 'On this page' }), list));
     document.body.classList.add('has-toc');
     if (!('IntersectionObserver' in window)) return;
-    var current = null;
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
         if (!e.isIntersecting) return;
         links.forEach(function (l) { l.a.classList.toggle('is-current', l.el === e.target); });
-        current = e.target;
       });
     }, { rootMargin: '-15% 0px -70% 0px' });
     links.forEach(function (l) { io.observe(l.el); });
@@ -459,8 +458,17 @@
 
   /* ---------- init ---------- */
 
+  function addFavicon() {
+    if (document.querySelector('link[rel~="icon"]')) return;
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236d28d9'/>" +
+      "<path d='M22 16a6 6 0 1 1-6-6h3' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/>" +
+      "<path d='M17 6.5l3 3.5-3 3.5' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+    document.head.appendChild(AC.h('link', { rel: 'icon', href: 'data:image/svg+xml,' + svg }));
+  }
+
   function init() {
     var file = currentFile();
+    addFavicon();
     document.body.insertBefore(AC.h('a', { class: 'skip-link', href: '#main', text: 'Skip to content' }), document.body.firstChild);
     var sidebar = buildSidebar(file);
     var tb = document.querySelector('.topbar');

@@ -378,6 +378,7 @@ table.compare tbody th { font-weight: 650; }
 .quiz.sorter.js details.answer { grid-column: 1 / -1; font-size: .92rem; color: var(--text-2); }
 .quiz.sorter.js details.answer > summary { display: none; }
 .quiz.sorter.js details.answer p { margin: 0; }
+.quiz.sorter.js.stacked { grid-template-columns: 1fr; }
 @media (max-width: 600px) { .quiz.sorter.js { grid-template-columns: 1fr; } }
 
 /* Exercises and checkpoints */
