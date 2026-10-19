@@ -46,7 +46,7 @@
 )
 # only `result` enters the parent's context</code></pre>
     <p>This is the simplest channel. The parent calls the child like a function, and the child's answer comes back as one tool result. It fits a clear question with a short answer, which is where most subagent designs start (<a href="07-subagents.html">chapter 7</a>).</p>
-    <p>The costs follow from that shape. The parent waits, or checks back later if the child runs in the background. Anything the child leaves out is lost. And a long answer floods the parent's context. So ask for a fixed format and a length limit, and put the details in a file.</p>
+    <p>The parent waits, or checks back later if the child runs in the background. Anything the child leaves out is lost, and a long answer floods the parent's context. So ask for a fixed format and a length limit, and put the details in a file.</p>
   </section>
 
   <section id="shared-state">
@@ -98,7 +98,7 @@ state = {"findings": [], "files": {}}   # one object, shared by parent and child
  "ask": "Which auth tests touch token expiry?",
  "parent": 3, "result": null}</code></pre>
     <p>In a task queue, the message is the task record itself: the request, its status, its owner, and the result. Anyone can look at the board, including a person, who can also change a task. A task also survives when its worker crashes, because a lease hands it to another worker (<a href="12-long-running.html#queues-and-workers">chapter 12</a>).</p>
-    <p>A queue fits durable work, many workers, and people who need to watch or steer. The costs are slower handoffs, more moving parts, and tasks that can run twice.</p>
+    <p>A queue fits durable work, many workers, and people who need to watch or steer. The costs are slower handoffs, more moving parts, and tasks that can run twice. A task that keeps failing usually moves to a dead-letter queue, a separate queue where a person can inspect it.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
@@ -122,7 +122,7 @@ state = {"findings": [], "files": {}}   # one object, shared by parent and child
 }
 next_agent = controller.pick(board)     # a set of rules, or a model call</code></pre>
     <p>This is the blackboard architecture, an old idea from AI research. Specialists watch the board and add to it when they can help. A controller picks who acts next, based on the board. Here, the controller might see that h2 has no evidence yet and wake the test agent.</p>
-    <p>Unlike plain shared state, the board is organized like the problem, and nobody fixes the order of work in advance. That suits problems such as diagnosis, where the next step depends on what the specialists find. As the board grows, give each agent only the sections it needs, and remove entries that are no longer true.</p>
+    <p>Unlike plain shared state, the board is organized like the problem, and nobody fixes the order of work in advance. That suits problems such as diagnosis, where the next step depends on what the specialists find.</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>Blackboard = a shared document with sections + specialists who add to it + a controller that picks who works next.</p>
@@ -135,8 +135,9 @@ next_agent = controller.pick(board)     # a set of rules, or a model call</code>
 <pre><code>-- one row per file being edited; a second claim fails
 CREATE TABLE claims (path TEXT PRIMARY KEY, agent TEXT, run_id TEXT);
 INSERT INTO claims VALUES ('auth/session.py', 'coder-2', 'run-77');</code></pre>
-    <p>The second agent's insert fails, and its code tells the model "file taken". The rule never appears in a prompt, so no wording can get around it.</p>
-    <p>A database is shared state that lives outside any program. It survives crashes, many programs can use it, and transactions and constraints keep its data consistent. Each agent can also query exactly the rows it needs, which keeps its context small. Do not let models write raw SQL against shared tables, though. Wrap the database in narrow tools such as <code>claim_file</code> and <code>get_task</code>.</p>
+    <p>The second agent's insert fails, and its code tells the model "file taken". But the claim protects the file only if every way of writing checks it. The edit tool must refuse to write without a claim. A general shell can write any file and skip that check. So agents that share files either lose the shell or work in separate copies of the repository.</p>
+    <p>Claims also need an end. An agent deletes its claim when it finishes. A claim whose agent died expires after a timeout, like a lease (<a href="12-long-running.html#queues-and-workers">chapter 12</a>).</p>
+    <p>A database is shared state that lives outside any program. It survives crashes, many programs can use it, and constraints keep its data consistent. Wrap it in narrow tools such as <code>claim_file</code> and <code>get_task</code>, rather than letting models write raw SQL against shared tables.</p>
   </section>
 
   <section id="tradeoffs">
@@ -185,22 +186,22 @@ INSERT INTO claims VALUES ('auth/session.py', 'coder-2', 'run-77');</code></pre>
 
   <section id="protocols">
     <h2>Protocols: MCP and A2A</h2>
-    <p>Say Patch should use the team's ticket system, which runs an MCP server. Patch's code asks the server which tools it offers, shows them to the model, and forwards the model's requests to the server.</p>
-    <p>MCP, the Model Context Protocol, connects an agent's code to tools, data, and prompts offered by another program (<a href="02-tools.html#discovery">chapter 2</a>). It standardizes how tools are listed and called. It is not an agent loop, because your code still runs the loop. It is not a security boundary either. The server's tools run with the server's access, and the spec itself says MCP "cannot enforce these security principles at the protocol level".</p>
+    <p>Say the team's ticket system runs an MCP server. Patch's code asks it which tools it offers, shows them to the model, and forwards the model's requests.</p>
+    <p>MCP, the Model Context Protocol, connects an agent's code to tools, data, and prompts offered by another program (<a href="02-tools.html#discovery">chapter 2</a>). It is not an agent loop, because your code still runs the loop. It is not a security boundary either. The server's tools run with the server's access, and the spec itself says MCP "cannot enforce these security principles at the protocol level".</p>
     <p>A2A, the Agent2Agent protocol (version 1.0), covers the other pairing. In its own words, "MCP standardizes agent-to-tool communication; A2A standardizes agent-to-agent communication." Each agent publishes an Agent Card, a JSON document that lists its skills, its address, and how to sign in. Work travels as a Task with an id and a lifecycle, much like a record in the task queue above. The agents do not need to share their memory or tools.</p>
     <p>Neither protocol decides what enters a context or who may do what. Those decisions stay with you.</p>
   </section>
 
   <section id="running-example">
     <h2>Running example: Patch talks through files</h2>
-    <p>Patch's subagents already return short reports (<a href="07-subagents.html#running-example">chapter 7</a>). Now the runtime saves each full report in a shared workspace and gives the parent only the summary and the file path. The reviewer's brief also carries paths to the diff and the test output instead of pasted copies. The subagents stay read-only, because the runtime does all the writing.</p>
+    <p>Patch's subagents already return short reports (<a href="07-subagents.html#running-example">chapter 7</a>). Now each subagent's final message has two parts: a summary of at most five lines, then its full notes. The runtime saves the notes in a shared workspace and passes the parent only the summary and the file path. Briefs work the same way, so the reviewer gets paths to the diff and the test output, and the subagents stay read-only.</p>
 <pre><code># Patch v12: reports and briefs carry full contents
 - report = delegate(explorer, task)
 - review = delegate(reviewer, brief + diff_text + test_output)
-# Patch v13: summaries and paths in context, contents on disk
-+ report = delegate(explorer, task, format="summary first, at most 5 lines")
-+ path = workspace.save(f"explore/{task.issue}.md", report.full)   # the runtime writes
-+ parent.add(tool_result(report.summary + "\nFull notes: " + path))
+# Patch v13: the final message is a summary (5 lines at most), then the full notes
++ report = delegate(explorer, task, format="summary, then full notes")
++ path = workspace.save(f"explore/{task.issue}.md", report.notes)   # the runtime saves the notes
++ parent.add(tool_result(report.summary + "\nFull notes: " + path))  # the parent sees only this
 + review = delegate(reviewer, brief + "Diff: /work/412.diff  Tests: /work/412-tests.txt")</code></pre>
   </section>
 
@@ -219,7 +220,7 @@ INSERT INTO claims VALUES ('auth/session.py', 'coder-2', 'run-77');</code></pre>
       <dl>
         <dt>Why it happens</dt><dd>They share files or state, write at the same moment, and nobody owns anything.</dd>
         <dt>How to spot it</dt><dd>Lost changes, merge conflicts, or reducer errors.</dd>
-        <dt>What to do</dt><dd>Give each file or field one writer, use claims the database enforces, or give each agent its own copy of the repository.</dd>
+        <dt>What to do</dt><dd>Give each file or field one writer, make every write tool check a claim first, or give each agent its own copy of the repository.</dd>
       </dl>
     </div>
     <div class="failure">
@@ -269,16 +270,16 @@ INSERT INTO claims VALUES ('auth/session.py', 'coder-2', 'run-77');</code></pre>
         <li data-correct>A short summary with evidence, plus the path to the full notes</li>
         <li>Nothing. The parent can search the workspace later.</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>A short summary plus a path. The parent's context stays small, and the details are one read away. With nothing returned, the parent does not even know the notes exist.</p></details>
+      <details class="answer"><summary>Answer</summary><p>A short summary plus a path, so the parent's context stays small and the details are one read away.</p></details>
     </div>
     <div class="quiz">
       <p class="q">Two agents must never edit the same file at once. Where should that rule live?</p>
       <ol class="options">
         <li>In both agents' system prompts</li>
-        <li data-correct>In a claim that your code or the database enforces, such as a unique key</li>
+        <li data-correct>In a claim that the database records and every write tool checks</li>
         <li>In a message each agent sends before editing</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>In an enforced claim. A prompt or a message can be ignored, but a unique key refuses the second claim, whatever the models say.</p></details>
+      <details class="answer"><summary>Answer</summary><p>In an enforced claim. The database refuses a second claim, and the write tools refuse to edit without one. A prompt or a message can be ignored.</p></details>
     </div>
   </section>
 
