@@ -85,8 +85,8 @@
             <tr><th scope="row">Subagents</th><td>No, because a loop in code already gives each source its own model call.</td></tr>
             <tr><th scope="row">Scheduling</th><td>Yes, it runs weekly. The week (for example <code>2026-W43</code>) is the run's id, so a second trigger that week does nothing.</td></tr>
             <tr><th scope="row">If one site fails</th><td>Code retries three times, then lists the page as "not checked" in the report, so a failure never looks like "no change".</td></tr>
-            <tr><th scope="row">Approvals</th><td>A person approves each report for the first month. After that, it needs none, because nothing irreversible happens.</td></tr>
-            <tr><th scope="row">Security boundary</th><td>Your code calls the tools, not the model. So a page with hidden instructions can at worst distort a summary.</td></tr>
+            <tr><th scope="row">Approvals</th><td>Posting is an external effect, because a wrong report misleads people once it is out. So a person approves each report until the evaluation shows few errors, and only then does the team choose to post automatically.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>Fetches may reach only the listed sites and the news API, and code refuses redirects to other domains. Only the post step holds a credential, and it can post only to the team's channel. Because the model has no tools, a page with hidden instructions can at worst distort a summary.</td></tr>
             <tr><th scope="row">Evaluation</th><td>Replay 20 past weeks that the team labeled, and count missed and invented changes.</td></tr>
           </tbody>
         </table>
@@ -333,8 +333,8 @@
             <tr><th scope="row">State</th><td>The CRM holds the lead, the facts, the score, the draft, the approval, and the replies.</td></tr>
             <tr><th scope="row">Memory</th><td>The agent loads a profile of a good customer and a writing guide, plus good past emails as examples.</td></tr>
             <tr><th scope="row">Subagents</th><td>No, because each lead is a short pipeline. Leads run in parallel from a queue.</td></tr>
-            <tr><th scope="row">Approvals</th><td>Reps approve every first email for a month. After that, only emails about pricing need a rep.</td></tr>
-            <tr><th scope="row">Security boundary</th><td>There is no discount tool, so the agent cannot offer one even if asked. The model sees one lead, not the whole CRM.</td></tr>
+            <tr><th scope="row">Approvals</th><td>Reps approve every first email for a month. After that, code holds any email or reply that mentions a price or a discount until a rep approves it.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>There is no discount tool, so the agent cannot apply a discount. It could still promise one in plain text, which is why code holds pricing messages for a rep. The model sees one lead, not the whole CRM.</td></tr>
             <tr><th scope="row">Evaluation</th><td>Score 200 past leads and compare with the reps' judgment. Code checks that every personal claim in an email matches a looked-up fact.</td></tr>
           </tbody>
         </table>
@@ -571,7 +571,7 @@
       </figure>
       <h4>Tools</h4>
       <ul>
-        <li><code>edit_file</code> <span class="w-pill">Reversible write</span> Git can undo any change.</li>
+        <li><code>edit_file</code> <span class="w-pill">Reversible write</span> Each session starts from a clean checkout, so git can restore every file to the last commit.</li>
         <li><code>run_command</code> <span class="w-pill">Depends on command</span> It runs only in the sandbox, for tests and the dev server.</li>
         <li><code>ask_team(question)</code> <span class="w-pill">External</span> It posts a question, and the agent moves to another feature while it waits.</li>
       </ul>
@@ -640,7 +640,7 @@
             <tr><th scope="row">Duplicates</th><td>A fixed branch name per repo, and a check for an existing pull request before opening one.</td><td>A retry opens a second pull request.</td></tr>
             <tr><th scope="row">Security boundary</th><td>A fresh container per repo, because build scripts are untrusted code. The token can open pull requests but not merge them.</td><td>One machine with an admin token for every repo.</td></tr>
             <tr><th scope="row">Done</th><td>Tests pass, no old imports remain, and a golden test (a comparison with saved, known-good output) shows alert-related log lines are unchanged.</td><td>"The agent said done."</td></tr>
-            <tr><th scope="row">Human load</th><td>Batches of about 20 a week, with descriptions that say how each change was checked.</td><td>300 pull requests on day one.</td></tr>
+            <tr><th scope="row">Human load</th><td>About 50 pull requests a week in total, one or two per team, paced by each team's review capacity. Each description says how the change was checked.</td><td>300 pull requests on day one.</td></tr>
             <tr><th scope="row">Evaluation</th><td>A pilot on 10 varied repos before the full run.</td><td>Run on all 300 and see.</td></tr>
           </tbody>
         </table>

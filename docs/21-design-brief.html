@@ -26,7 +26,7 @@
 
   <section id="decode">
     <h2>Decode the sentence</h2>
-    <p>Each phrase below starts with an example from Patch, the course's coding agent. The table after it lists the alternatives, what goes wrong, and what your brief must specify.</p>
+    <p>Each phrase starts with an example from Patch, the course's coding agent, then a table of alternatives, failures, and what your brief must specify.</p>
 
     <h3 id="isolated-subagents">Isolated subagents</h3>
     <p>Patch needs to find every place that reads session tokens, which means opening about 40 files. Instead of reading them itself, it starts an explorer: a second agent loop with its own empty context and read-only tools. The explorer returns a 300-word summary, so Patch's context grows by 300 words instead of 40 files. "Isolated" names what the helper does not share with its parent: its context, its files, or its permissions. <a href="07-subagents.html#isolation">Chapter 7</a> covers the options.</p>
@@ -53,7 +53,7 @@
         <tbody>
           <tr><th scope="row">Alternatives</th><td>Short runs that start over after a crash, which is fine when they have no side effects, or a workflow engine that records each step.</td></tr>
           <tr><th scope="row">What goes wrong</th><td>A resumed run repeats an action that already happened, two workers resume the same run, or new code loads a checkpoint that old code wrote.</td></tr>
-          <tr><th scope="row">You must specify</th><td>What a checkpoint holds and when code writes it, an idempotency key (an id the receiver uses to ignore repeats) for each external action, and a lock so one worker owns each run.</td></tr>
+          <tr><th scope="row">You must specify</th><td>What a checkpoint holds and when code writes it, an idempotency key (an id the receiver uses to ignore repeats) for each external action, how to ask the receiver what happened when an outcome is unknown, and a lock so one worker owns each run.</td></tr>
         </tbody>
       </table>
     </div>
@@ -160,7 +160,7 @@
 
   <section id="example-brief">
     <h2>Example: Patch's brief</h2>
-    <p>Here is the template filled in for Patch. It is the target sentence made specific. The numbers are examples, so choose your own, but do choose them.</p>
+    <p>Here is the template filled in for Patch. The numbers are examples, so choose your own, but do choose them.</p>
     <div class="panel">
       <p>Build Patch, a coding agent for our web service: a Python API on PostgreSQL, deployed on AWS, with a TypeScript front end.</p>
       <h4>Goal and non-goals</h4>
@@ -174,15 +174,15 @@
       </ul>
       <h4>Loop and termination</h4>
       <ul>
-        <li>Patch runs one agent loop with two helpers. The runtime stops when Patch proposes done and the checks pass. It also stops at 30 steps, at $3, or after three identical tool calls in a row.</li>
+        <li>Patch runs one agent loop with two helpers. The runtime stops when Patch proposes done and the checks pass, when a budget runs out, or after three identical tool calls in a row.</li>
         <li>Done means the target test and the full test suite pass. The runtime checks this, not the model.</li>
       </ul>
       <h4>Tools</h4>
       <ul>
         <li>Read-only: <code>search_files</code>, <code>read_file</code>, and <code>delegate</code>, whose helpers can only read.</li>
-        <li>Reversible write: <code>edit_file</code> in the repo, and <code>todo_write</code> in the run's state.</li>
+        <li>Reversible write: <code>edit_file</code>, which edits a clean checkout that git can restore, and <code>todo_write</code>, which edits the run's state.</li>
         <li>Depends on the command: <code>run_command</code>, which runs only in the sandbox. Allowlisted commands such as <code>pytest</code> run without asking.</li>
-        <li>External: <code>open_pr</code>, which the runtime runs outside the sandbox.</li>
+        <li>External: <code>open_pr</code>, <code>run_migration(name)</code> for the shared staging database, and <code>deploy_staging(commit)</code>. The runtime runs each one outside the sandbox with its own narrow credential.</li>
         <li>Outputs over 2,000 tokens go to a file, and Patch sees the last 20 lines and the path.</li>
       </ul>
       <h4>State model</h4>
@@ -205,25 +205,27 @@
       </ul>
       <h4>Delegation</h4>
       <ul>
-        <li>The explorer has read-only tools and returns under 300 words with file paths. The reviewer has read-only tools and checks the diff against the task and the test results.</li>
+        <li>Both helpers have read-only tools. The explorer returns under 300 words with file paths, and the reviewer checks the diff against the task and the test results.</li>
         <li>Helpers cannot start helpers.</li>
       </ul>
       <h4>Skills</h4>
       <ul>
-        <li><code>add-db-migration</code> and <code>deploy-staging</code> load only when needed. Loading a skill grants no permissions.</li>
+        <li><code>add-db-migration</code> and <code>deploy-staging</code> load only when needed. Their steps end with the <code>run_migration</code> and <code>deploy_staging</code> tools, never with shell commands. Loading a skill grants no permissions.</li>
       </ul>
       <h4>Security boundary</h4>
       <ul>
-        <li>Patch runs in a container with only the repo mounted, network access only to the package registry, and no production credentials. The Git token stays in the runtime.</li>
+        <li>Patch runs in a container with only the repo mounted and no credentials. Its network reaches only the package registry, so <code>run_command</code> cannot reach databases or deploy systems. The Git token, the migration credential, and the deploy token stay in the runtime, each usable by one tool.</li>
       </ul>
       <h4>Approvals</h4>
       <ul>
-        <li>Gate <code>open_pr</code>, migrations on shared databases, <code>deploy-staging</code>, and deleting files outside the repo, a second line of defense behind the container. Each approval covers one exact call, and an edited call is checked again.</li>
+        <li>Gate <code>open_pr</code>, <code>run_migration</code>, <code>deploy_staging</code>, and deleting files outside the repo, a second line of defense behind the container. Each approval covers one exact call, and an edited call is checked again.</li>
         <li>Interactive runs ask about commands outside the allowlist, and nightly runs reject them. A nightly run that reaches a gate saves a checkpoint and waits for a person.</li>
       </ul>
       <h4>Durability</h4>
       <ul>
-        <li>After a crash, resume from the last checkpoint. Before <code>open_pr</code>, look up an existing pull request for the issue, so each issue gets only one.</li>
+        <li>After a crash, resume from the last checkpoint.</li>
+        <li>Open each pull request from one fixed branch per issue, such as <code>patch/issue-4821</code>. Uniqueness must come from the receiver, because two workers can both look, find no pull request, and both open one. So verify that the Git host refuses a second open pull request for the same branch.</li>
+        <li>If <code>open_pr</code> times out, its outcome is unknown. Look the pull request up by branch before trying again.</li>
       </ul>
       <h4>Observability</h4>
       <ul>
@@ -255,7 +257,8 @@
         <tbody>
           <tr><th scope="row">Rejected calls never run</th><td>The model calls <code>open_pr</code>, and the test rejects it. Check that no request reached the Git server.</td></tr>
           <tr><th scope="row">Approved calls run as approved</th><td>Change a call's arguments after approval. Check that the runtime asks again.</td></tr>
-          <tr><th scope="row">Retries do not duplicate</th><td>Crash right after <code>open_pr</code> is sent, then resume. Check that exactly one pull request exists.</td></tr>
+          <tr><th scope="row">Retries do not duplicate</th><td>Run two workers on the same issue, and crash one right after it sends <code>open_pr</code>. Resume it, and check that exactly one pull request exists.</td></tr>
+          <tr><th scope="row">The shell cannot deploy</th><td>From inside the sandbox, try to reach the staging database and the deploy service. Check that both connections fail.</td></tr>
           <tr><th scope="row">Rules survive compaction</th><td>Pin "do not edit <code>migrations/</code>", then compact with a summary that drops everything. Check that the rule is in the next context.</td></tr>
           <tr><th scope="row">Done needs evidence</th><td>The model says "done" while the test fails. Check that the run is not marked successful.</td></tr>
           <tr><th scope="row">Every run ends</th><td>The model repeats one call forever. Check that the run stops at the third repeat.</td></tr>
