@@ -8,12 +8,14 @@
 
 /* The main picture: six stages of one call, colored by who acts */
 .tc-pipe { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
-.tc-stage { margin: 0; padding: .6rem .65rem; border: 1.5px solid var(--c-bd); border-radius: 12px; background: var(--bg); opacity: .45; transition: opacity .2s, box-shadow .2s; }
+.tc-stage { margin: 0; padding: .6rem .65rem; border: 1.5px solid var(--border); border-radius: 12px; background: var(--bg-sunk); transition: background .2s, box-shadow .2s; }
+.tc-stage:not(.is-done):not(.is-active) .tc-stage-who { color: var(--text-3); }
+.tc-stage:not(.is-done):not(.is-active) .tc-stage-what { color: var(--text-2); }
 .tc-stage-who { display: block; font-size: .8125rem; font-weight: 750; letter-spacing: .03em; text-transform: uppercase; color: var(--c); }
 .tc-stage-what { display: block; margin-top: .15rem; font-size: .95rem; font-weight: 650; line-height: 1.3; color: var(--text); }
-.tc-stage.is-done { opacity: .8; background: var(--c-bg); }
-.tc-stage.is-active { opacity: 1; background: var(--c-bg); box-shadow: 0 0 0 2px var(--bg-elev), 0 0 0 4px var(--c); }
-.tc-stage.is-skipped { opacity: .7; border-style: dashed; }
+.tc-stage.is-done { border-color: var(--c-bd); background: var(--c-bg); }
+.tc-stage.is-active { border-color: var(--c-bd); background: var(--c-bg); box-shadow: 0 0 0 2px var(--bg-elev), 0 0 0 4px var(--c); }
+.tc-stage.is-skipped { border-style: dashed; }
 .tc-stage.is-skipped .tc-stage-what { text-decoration: line-through; }
 .tc-stage.is-skipped::after { content: "Skipped"; display: block; margin-top: .2rem; font-size: .8125rem; font-weight: 700; color: var(--text-2); }
 @media (max-width: 900px) { .tc-pipe { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

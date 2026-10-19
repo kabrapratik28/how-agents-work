@@ -14,7 +14,7 @@
   <header class="chapter-head">
     <p class="kicker">Chapter 15 · Quality</p>
     <h1>Reliability</h1>
-    <p class="lede">Agents fail in about a dozen familiar ways. Each one has a cause, a sign you can find in the record of a run, and a fix in your code.</p>
+    <p class="lede">Agents fail in about a dozen familiar ways. Each has a cause, a sign in the record of a run, and a fix in your code.</p>
     <div class="loop-map" data-focus="all"></div>
   </header>
 
@@ -51,7 +51,7 @@
     <div class="failure" id="infinite-loops">
       <h3>Infinite loops</h3>
       <dl>
-        <dt>Why it happens</dt><dd>Patch's edit fails to apply, so it rereads the file and tries the same edit for 40 steps. Loops start when results stop changing the model's choices, when nothing defines "done", or when a needed result was cut from the context.</dd>
+        <dt>Why it happens</dt><dd>Patch's edit fails to apply, so it rereads the file and tries the same edit for 40 steps. Loops start when results stop changing the model's choices, when nothing defines "done", or when a needed result was cut.</dd>
         <dt>How to spot it</dt><dd>Count the steps and the cost of every run. Flag runs that make no progress: no new file read, no new test result, and no change in state.</dd>
         <dt>What to do</dt><dd>Set hard limits on steps, tokens, money, and time. When one runs out, stop with a report of how far the run got, or hand it to a person.</dd>
       </dl>
@@ -60,8 +60,8 @@
       <h3>Repeated tool calls</h3>
       <dl>
         <dt>Why it happens</dt><dd>Patch runs the tests five times in a row with no edit in between. The model has lost track of the result, because the output was cut short or fell out of the context.</dd>
-        <dt>How to spot it</dt><dd>Record each call as the tool name plus its arguments. Flag the same call twice within a few steps.</dd>
-        <dt>What to do</dt><dd>On the first repeat, remind the model: "You ran this at step 12, and the result was ...". Stop after a few repeats, and keep each call with its result when you shorten the context.</dd>
+        <dt>How to spot it</dt><dd>Record each failing call with its arguments, the current version of the files, and the result. The same record twice means nothing changed between the attempts.</dd>
+        <dt>What to do</dt><dd>On the first repeat, remind the model: "This failed the same way at step 12." Stop after a few repeats without progress, and keep each call with its result when you shorten the context.</dd>
       </dl>
     </div>
     <div class="failure" id="hallucinated-completion">
@@ -88,7 +88,7 @@
       <dl>
         <dt>Why it happens</dt><dd>Patch's history is replaced by a summary that drops the exact error message, and the original messages are deleted. Writes that overwrite records instead of adding to them lose state the same way.</dd>
         <dt>How to spot it</dt><dd>Compare state before and after each write and each summary. Watch for facts the agent asks for again, and for files that suddenly shrink.</dd>
-        <dt>What to do</dt><dd>Keep the full history in storage, and send the model only a summary of the old part, as Deep Agents, Pi, and Hermes do (<a href="04-context.html#compaction">chapter 4</a>). Keep checkpoints so you can roll back.</dd>
+        <dt>What to do</dt><dd>Keep the full history in storage and send the model a summary, as Deep Agents, Pi, and Hermes do (<a href="04-context.html#compaction">chapter 4</a>). Keep checkpoints so you can roll back.</dd>
       </dl>
     </div>
     <div class="failure" id="forgetting-constraints">
@@ -132,23 +132,23 @@
       <dl>
         <dt>Why it happens</dt><dd>The test runner times out, the error escapes your tool code, and the run dies without a record. Tools fail often: timeouts, rate limits, missing files, and invalid arguments from the model.</dd>
         <dt>How to spot it</dt><dd>Track errors for each tool and each kind of error. Look for runs that end in a crash instead of a stop rule.</dd>
-        <dt>What to do</dt><dd>Retry timeouts in code (<a href="12-long-running.html#retries">chapter 12</a>), and send other errors back to the model as tool results (<a href="02-tools.html#errors">chapter 2</a>). Never let an error crash the loop.</dd>
+        <dt>What to do</dt><dd>Retry a timeout in code only for reads and for actions that are safe to repeat (<a href="12-long-running.html#retries">chapter 12</a>). Send other errors back to the model as tool results (<a href="02-tools.html#errors">chapter 2</a>), and never let an error crash the loop.</dd>
       </dl>
     </div>
     <div class="failure" id="partial-failure">
       <h3>Partial failure</h3>
       <dl>
-        <dt>Why it happens</dt><dd>Patch's nightly run fixes three of five issues, and then the process is killed. Two branches exist and one pull request is open, but nobody knows which issues are done.</dd>
+        <dt>Why it happens</dt><dd>Patch's nightly run prepares fixes for three of five issues, and then the process is killed. Two branches exist and one approval request went out, but nobody knows which issues are done.</dd>
         <dt>How to spot it</dt><dd>Keep each item's status in your code's state, not only in the conversation. Look for tool calls without results.</dd>
-        <dt>What to do</dt><dd>Save a checkpoint after each step, and check the outside world before redoing anything on resume (<a href="12-long-running.html#resumability">chapter 12</a>). Report what is done, what failed, and what never started.</dd>
+        <dt>What to do</dt><dd>Save a checkpoint after each step, so finished steps survive and only the unfinished step may run again (<a href="12-long-running.html#resumability">chapter 12</a>). On resume, check the outside world before redoing anything, and report what is done and what is not.</dd>
       </dl>
     </div>
     <div class="failure" id="duplicate-actions">
       <h3>Duplicate actions</h3>
       <dl>
-        <dt>Why it happens</dt><dd>Patch asks the Git host to open a pull request, the request times out, and a retry opens a second one. A timeout means you do not know what happened, not that the request failed.</dd>
+        <dt>Why it happens</dt><dd>After approval, Patch's request to open the pull request times out, and a blind retry opens a second one. A timeout means the outcome is unknown, not that the request failed.</dd>
         <dt>How to spot it</dt><dd>Give every outside action an operation id, and alert when one id is attempted twice.</dd>
-        <dt>What to do</dt><dd>Send the same idempotency key with every retry, so a receiver that checks keys does the work once. If the receiver cannot check keys, look the action up before you retry (<a href="12-long-running.html#idempotency">chapter 12</a>).</dd>
+        <dt>What to do</dt><dd>Resend only if the receiver ignores repeats of the same idempotency key and the key's retention window is still open. Otherwise mark it "outcome unknown" and confirm what happened first, because the first attempt may still be running (<a href="12-long-running.html#idempotency">chapter 12</a>).</dd>
       </dl>
     </div>
     <aside class="callout cases">
@@ -204,21 +204,21 @@ P(all 20 succeed)    = 0.9599 ** 20           = 0.44</code></pre>
     <p>Now the retries lift the run only from 36% to 44%. Repeating an attempt cannot fix a mistake that happens every time. The agent needs a different attempt: new information, another approach, or a person.</p>
 
     <h3>Recovery, and steps that are not required</h3>
-    <p>Real runs differ from the math in two more ways. Many steps are not required: a search that finds nothing is not fatal, because the agent can search again. Failures can also be repaired later. A test run at step 15 can catch a bad edit from step 9. A checkpoint lets a crashed run continue. Anthropic's multi-agent research system resumes from where an error happened, because "Agents are stateful and errors compound".</p>
+    <p>Real runs differ from the math in two more ways. Many steps are not required: a search that finds nothing is not fatal, because the agent can search again. Failures can also be repaired later. A test run at step 15 can catch a bad edit from step 9. A checkpoint lets a crashed run continue from its last saved step. The unfinished step may run again. Anthropic's multi-agent research system resumes from where an error happened, because "Agents are stateful and errors compound".</p>
     <p>So the useful question is how soon your system notices a failure. Silent failures are the ones that compound. Put checks where errors start, and make each retry different from the last attempt. The same math explains why hand-offs between agents need checks (<a href="14-architectures.html#error-compounding">chapter 14</a>).</p>
   </section>
 
   <section id="defenses">
     <h2>Three defenses that cover most failures</h2>
-    <p>Most of the fixes above rely on three things: traces, budgets, and checks.</p>
+    <p>Three moments from Patch's runs show the defenses at work. When an edit failed at step 14, the record showed the exact context, the call, and the error. When Patch kept failing in a loop, a step limit stopped it at 60. When it claimed success, a test run proved it wrong. These are a trace, a budget, and a verification gate.</p>
 
     <h3 id="observability">Traces</h3>
-    <p>A trace records everything a run did: each context, reply, tool call, result, and change of state, linked by ids. Most "How to spot it" fields above are searches over traces. One entry might look like this:</p>
+    <p>A trace records everything a run did: each context, reply, tool call, result, and change of state, linked by ids. The entry for that failed edit might look like this:</p>
 <pre><code>{"run_id": "run_7f3", "step": 14, "kind": "tool_call",
  "call_id": "call_31", "tool": "edit_file", "args_hash": "a91c",
  "op_id": null, "context_tokens": 41200, "cost_usd": 0.021,
  "result": "error: old text not found", "ms": 180}</code></pre>
-    <p>Log the exact context of every model call, so you can tell whether a fact was in front of the model. Give every outside action an operation id, so duplicates show up.</p>
+    <p>Log the exact context of every model call. Then you can tell whether a fact was in front of the model. Give every outside action an operation id, so duplicates show up.</p>
 
     <h3 id="budgets">Budgets</h3>
     <p>A budget is a limit your code enforces, so a failure stops at a known cost. Cap steps, tokens, money, time, and errors in a row, for each run and each helper. Decide in advance what happens at the limit: stop with a progress report, ask a person, or save and resume later. A run that often hits its budget has a problem that the budget only hides.</p>
@@ -230,10 +230,11 @@ P(all 20 succeed)    = 0.9599 ** 20           = 0.44</code></pre>
 
   <section id="running-example">
     <h2>Running example: Patch gets reliability guards</h2>
-    <p>Patch gets three guards. A repeat check warns the model on the second identical call and stops the run on the fourth. Budgets cap each run at 60 steps, $3, and 30 minutes, and "done" counts only when the tests pass. Each guard writes to the trace, so a stopped run says why it stopped.</p>
-<pre><code>+ n = repeats.count(call, window=10)
-+ if n == 2: warn_model("You already ran this. Result: " + repeats.last(call))
-+ if n >= 4: return stop("repeating itself")
+    <p>Patch gets three guards. A repeat check warns the model when a call fails the same way on unchanged files. The fourth such failure stops the run. Budgets cap each run at 60 steps, $3, and 30 minutes, and "done" counts only when the tests pass. Each guard writes to the trace, so a stopped run says why it stopped.</p>
+<pre><code>+ key = (call.tool, call.args, workspace.version, hash(result))
++ n = failed_repeats.count(key) if result.failed else 0
++ if n == 2: warn_model("This failed the same way before, with the same files.")
++ if n >= 4: return stop("repeating without progress")
 + if run.steps >= 60 or run.usd >= 3.00 or run.seconds >= 1800:
 +     return stop("budget", report=run.progress())
   if not reply.tool_calls:
@@ -280,7 +281,7 @@ P(all 20 succeed)    = 0.9599 ** 20           = 0.44</code></pre>
     </div>
     <div class="quiz">
       <p class="q">A run dies halfway through a batch of outside actions. How should it resume? (Q20)</p>
-      <details class="answer"><summary>Answer</summary><p>Load the last checkpoint, and skip the steps recorded as confirmed. For a step with an unknown outcome, ask the receiver what happened before redoing it, unless the receiver checks idempotency keys. Then report what was done, what failed, and what never started.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Load the last checkpoint, and skip the steps recorded as confirmed. For a step with an unknown outcome, resend only with the same idempotency key while the receiver's retention window is open. Otherwise, find out what happened first. Then report what was done, what failed, and what never started.</p></details>
     </div>
   </section>
 
@@ -289,7 +290,7 @@ P(all 20 succeed)    = 0.9599 ** 20           = 0.44</code></pre>
     <ul>
       <li>The model's failures look like normal answers, so check its claims against evidence your code holds.</li>
       <li>Silent failures compound over long runs. Catch them early, and make each retry different from the last attempt.</li>
-      <li>A timeout means "unknown", not "failed", so outside actions need idempotency keys or a lookup before any retry.</li>
+      <li>A timeout means "unknown", not "failed". Retry an outside action only when the receiver ignores repeats, and otherwise find out what happened first.</li>
     </ul>
   </section>
 
@@ -297,7 +298,7 @@ P(all 20 succeed)    = 0.9599 ** 20           = 0.44</code></pre>
     <h2>Going deeper</h2>
     <ul>
       <li><a href="https://www.trychroma.com/research/context-rot">Context Rot: How Increasing Input Tokens Impacts LLM Performance</a> (Chroma, July 2025). Why long inputs hurt.</li>
-      <li><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Effective harnesses for long-running agents</a> (Anthropic, November 2025). Agents that stop too early, and how progress files and tests help.</li>
+      <li><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Effective harnesses for long-running agents</a> (Anthropic, November 2025). Agents that stop too early, and how to prevent it.</li>
       <li><a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Context Engineering for AI Agents: Lessons from Building Manus</a> (Manus, July 2025). Keep failed actions in the context, and make every summary reversible.</li>
     </ul>
   </section>

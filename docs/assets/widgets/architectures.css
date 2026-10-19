@@ -1,39 +1,35 @@
 /* Architecture explorer (chapter 14). All text is at least .82rem (13px). */
 .arch-sel-label { margin: .1rem 0 .4rem; font-size: .92rem; font-weight: 700; color: var(--text-2); }
 .arch-w .w-tabs { margin-bottom: .85rem; }
-.arch-task { margin: .1rem 0 .8rem; font-size: 1rem; line-height: 1.55; }
+.arch-w code { font-size: .9em; }
+.arch-task { margin: .1rem 0 .9rem; font-size: 1rem; line-height: 1.55; }
 
-/* The verdict comes first and is the largest text in the widget. */
-.arch-verdict-box { margin: 0 0 .6rem; padding: .85rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunk); }
-.arch-verdict { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline; margin: 0 0 .4rem; }
-.arch-verdict .w-status { font-size: .95rem; }
-.arch-verdict-what { font-size: .92rem; color: var(--text-2); }
-.arch-reason { margin: 0; font-size: 1.02rem; line-height: 1.55; }
-
-.arch-others-row { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; margin: 0 0 .9rem; }
-.arch-others-title { margin: 0; font-size: .88rem; color: var(--text-3); }
-.arch-others { display: flex; flex-wrap: wrap; gap: .35rem; }
-.arch-other {
-  font: 600 .86rem/1.2 var(--font);
-  padding: .32rem .65rem;
-  color: var(--text-2); background: var(--bg-elev);
-  border: 1px solid var(--border); border-radius: 999px;
-  cursor: pointer;
+/* The picture of the shape is the main element. Parts light up one step at a time. */
+.arch-pic { display: flex; flex-direction: column; align-items: center; gap: .3rem; padding: 1rem .6rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.arch-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: .45rem; }
+.arch-row-shared { margin-top: .2rem; padding-top: .55rem; border-top: 1px dashed var(--border); }
+.arch-arrow { color: var(--text-3); font-size: .95rem; line-height: 1; }
+.arch-link { color: var(--text-3); font-size: 1rem; }
+.arch-node {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  min-width: 6.4rem; padding: .45rem .7rem;
+  border: 1.5px solid var(--c-bd); border-radius: 10px; background: var(--c-bg); color: var(--c);
+  transition: background .2s, box-shadow .2s, transform .2s;
 }
-.arch-other:hover { border-color: var(--border-strong); color: var(--text); }
-.arch-other[aria-pressed="true"] { border-color: var(--text); color: var(--text); }
-.arch-v-helps { color: var(--ok); }
-.arch-v-neutral { color: var(--mid); }
-.arch-v-hurts { color: var(--bad); }
+.arch-node-label { font-size: .95rem; font-weight: 700; line-height: 1.25; }
+.arch-node-sub { font-size: .82rem; line-height: 1.3; color: var(--text-2); }
+.arch-pic.has-active .arch-node:not(.is-active) { color: var(--text-3); background: var(--bg-sunk); border-color: var(--border); }
+.arch-node.is-active { transform: scale(1.04); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--c); }
+.arch-legend { margin: .5rem 0 .8rem; font-size: .84rem; color: var(--text-3); }
+@media (max-width: 560px) {
+  .arch-row-chain { flex-direction: column; gap: .3rem; }
+  .arch-row-chain .arch-link { transform: rotate(90deg); }
+}
 
-/* The trace is the main picture; the dimensions panel is secondary and calmer. */
-.arch-main { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: .8rem; align-items: start; }
-@media (max-width: 760px) { .arch-main { grid-template-columns: 1fr; } }
-.arch-calls { margin: 0 0 .55rem; font-size: .9rem; font-weight: 650; color: var(--text-2); }
-.arch-trace { list-style: none; margin: 0; padding: 0; font-size: .92rem; line-height: 1.5; }
-.arch-trace li { margin: 0; padding: .38rem .55rem; border-left: 3px solid transparent; border-bottom: 1px dashed var(--border); }
-.arch-trace li:last-child { border-bottom: 0; }
-.arch-trace li.is-call { border-left-color: var(--model); background: var(--model-bg); }
+/* The narration of the current step. */
+.arch-w .w-narration { min-height: 5.6em; }
+.arch-say { margin: 0; font-size: 1.02rem; line-height: 1.55; }
+.arch-count { margin: .45rem 0 0; font-size: .86rem; color: var(--text-3); }
 .arch-who { font-weight: 700; margin-right: .3rem; }
 .arch-flag {
   display: inline-block; margin-left: .45rem;
@@ -45,10 +41,24 @@
 .arch-flag.mid { color: var(--mid); }
 .arch-flag.bad { color: var(--bad); }
 
-.arch-dims-panel { background: var(--bg-elev); }
-.arch-shape { margin: 0 0 .5rem; font: .86rem/1.45 var(--mono); color: var(--text-2); }
+/* The verdict for this shape in this situation. */
+.arch-verdict-box { margin: .9rem 0 .7rem; padding: .85rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunk); }
+.arch-verdict { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline; margin: 0 0 .4rem; }
+.arch-verdict .w-status { font-size: .95rem; }
+.arch-verdict-what { font-size: .9rem; color: var(--text-2); }
+.arch-reason { margin: 0; font-size: 1rem; line-height: 1.55; }
+
+/* Collapsed detail: every step, and how the shape works. */
+.arch-more { margin: .5rem 0 0; padding: .55rem .8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev); }
+.arch-more > summary { cursor: pointer; font-size: .92rem; font-weight: 650; color: var(--link); }
+.arch-more[open] > summary { margin-bottom: .55rem; }
+.arch-trace { list-style: none; margin: 0; padding: 0; font-size: .92rem; line-height: 1.5; }
+.arch-trace li { margin: 0; padding: .34rem .55rem; border-left: 3px solid transparent; border-bottom: 1px dashed var(--border); }
+.arch-trace li:last-child { border-bottom: 0; }
+.arch-trace li.is-call { border-left-color: var(--model); background: var(--model-bg); }
+.arch-trace li.current { outline: 2px solid var(--text-3); outline-offset: -2px; }
+.arch-preset { margin: 0 0 .6rem; font-size: .92rem; line-height: 1.5; color: var(--text-2); }
 .arch-dims { margin: 0; }
-.arch-dims dt { margin-top: .6rem; font-size: .86rem; font-weight: 700; color: var(--text-3); }
+.arch-dims dt { margin-top: .55rem; font-size: .86rem; font-weight: 700; color: var(--text-3); }
 .arch-dims dt:first-child { margin-top: 0; }
 .arch-dims dd { margin: .1rem 0 0; font-size: .9rem; line-height: 1.45; color: var(--text-2); }
-.arch-w code { font-size: .9em; }
