@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent communication · How AI Agents Work</title>
+<meta name="description" content="How agents pass information: return values, shared state, messages, event buses, task queues, blackboards, and databases, and what each one costs.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 13 · Systems</p>
+    <h1>Agent communication</h1>
+    <p class="lede">Agents pass information through ordinary channels such as return values, queues, and databases. A model can act only on the part that reaches its context.</p>
+    <div class="loop-map" data-focus="state act"></div>
+  </header>
+
+  <section id="two-layers">
+    <h2>Two layers: coordination and context</h2>
+    <p>Two coding agents work in the same repository. Before one edits <code>auth/session.py</code>, it must make sure the other is not editing that file. Later, a reviewer agent must tell the coder that a test still fails.</p>
+    <p>These are two different kinds of communication. The first is coordination: who works on what, who owns a file, whether a task is done. Your code handles it with locks, queues, and status fields, and none of it needs to reach a model. The second is information a model must act on, such as the failing test. That has to enter the coder's context, because a model sees nothing else (<a href="04-context.html#only-context">chapter 4</a>).</p>
+    <div class="flow">
+      <span class="node runtime">Agent A's code</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node state">Channel: queue, file, or table</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node runtime">Agent B's code</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node context">The part B's model needs</span>
+    </div>
+    <p>Everything that enters a context costs tokens and attention. It can also carry instructions, because a model treats all of its input as guidance. So send a reference instead of the content when you can: a file path, a task id, or a commit hash. For example, a research agent can save 40 KB of notes to <code>/work/research/auth.md</code>. Then it returns one line: "Three likely causes, details in /work/research/auth.md." The parent's context grows by one line instead of 40 KB. Anthropic's multi-agent research system works this way: its subagents store their outputs elsewhere and pass back lightweight references.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>Agents communicate the way processes do: through return values, shared memory, messages, publish and subscribe, job queues, and shared databases. The usual tradeoffs carry over.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> the final reader is a model. Everything you deliver to it costs tokens and can steer it. And a message in plain language has no fixed format, so the receiver can misread it.</p>
+    </aside>
+  </section>
+
+  <section id="return-values">
+    <h2>Parent and child: return values</h2>
+    <p>A coding agent needs to know where expired tokens are accepted. It hands the question to a subagent, which searches the code in its own loop and returns five lines.</p>
+<pre><code>result = delegate(
+    "Find where expired tokens are accepted. "
+    "Return at most 5 lines: file:line and one sentence each.",
+    tools=["search_files", "read_file"],
+)
+# only `result` enters the parent's context</code></pre>
+    <p>This is the simplest channel. The parent calls the child like a function, and the child's answer comes back as one tool result. It fits tree-shaped work with a clear question and a short answer. Most subagent designs start here (<a href="07-subagents.html">chapter 7</a>).</p>
+    <p>The costs follow from that shape. The parent waits for the answer, or checks back later if the child runs in the background. Anything the child leaves out is lost. And a long answer floods the parent's context. So ask for a fixed format and a length limit, and put details in a file.</p>
+    <p>Real systems keep both directions narrow. In Deep Agents (0.7.28), the parent receives only the child's last message. In Hermes (v0.22.2), a child starts with no history from the parent, so the brief the parent writes is all it knows.</p>
+    <p>Not everyone agrees that a short answer is enough. Cognition argues: "Share context, and share full agent traces, not just individual messages". Its reason: actions carry implicit decisions, and agents that cannot see each other's decisions make conflicting ones.</p>
+  </section>
+
+  <section id="shared-state">
+    <h2>Shared state</h2>
+    <p>A research subagent writes <code>notes.md</code> into a set of files that it shares with its parent. The parent reads the file later, and only if it needs the details.</p>
+    <p>Here several agents read and write the same state inside one program. It might be a dictionary, a todo list, or a set of files. Nothing enters a context until an agent reads it, which keeps contexts small.</p>
+    <p>The risk is hidden coupling: any agent can change something another depends on, and nobody is told. Agents that write at the same moment can also overwrite each other. So you need a merge rule, often called a reducer, that says how two writes combine:</p>
+<pre><code>def merge_findings(old, new):        # a reducer for writes that arrive together
+    return old + [f for f in new if f not in old]
+
+state = {"findings": [], "files": {}}   # one object, shared by parent and children</code></pre>
+    <p>Shared state fits agents that run in one program, in one run, with few writers.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Deep Agents</strong> (0.7.28) isolates a subagent's context but not its state. With the default setup, children read and write the parent's files, and those files remain after the children finish. If subagents running in parallel write the same custom field, it needs a reducer, or the step fails.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="messages">
+    <h2>Messages</h2>
+    <p>A reviewer agent sends the coder a message: the test still fails, and the details are in a file.</p>
+<pre><code>{"from": "reviewer", "to": "coder", "re": "task-412",
+ "kind": "change_request",
+ "note": "test_login_expired_token still fails",
+ "ref": "/work/review/412.md"}</code></pre>
+    <p>With messages, one agent writes to another agent's inbox. The receiver's code decides when each message enters its model's context. Usually it arrives as a new message on the next turn. Messages fit a few long-lived agents that go back and forth. A review loop is one example, and a person steering an agent while it runs is another.</p>
+    <p>Every message enters a context, so chatty agents get expensive, and two agents can keep replying to each other forever. Treat each message as untrusted input, too. If the sender read a hostile web page, its message can pass the attack along. Give messages fixed fields, and keep the free text short.</p>
+    <p>Real systems draw this line in different places. With an extension, one Pi (1.3.0) agent can send prompts to another. Hermes (v0.22.2) keeps its model from messaging other chats on its own: its <code>send_message</code> tool is deliberately not offered to the model.</p>
+  </section>
+
+  <section id="event-bus">
+    <h2>Event bus</h2>
+    <p>The build system announces that a build failed. A triage agent starts a run, and a notifier posts in the team chat. The build system does not know that either of them exists.</p>
+<pre><code>bus.publish("build.failed", {
+    "repo": "web-api", "commit": "9f2c1e7",
+    "log": "ci/runs/5512/log.txt",          # a reference, not the log itself
+    "event_id": "evt-77a1",                  # so repeats can be spotted
+})
+# subscribers: a triage agent starts a run; a notifier posts in chat</code></pre>
+    <p>That is an event bus, also called publish and subscribe. A component publishes an event on a topic, and every subscriber to that topic reacts. You can add a subscriber without changing the publisher, so a bus suits triggers that start event-driven agents (<a href="01-agent-loop.html#event-driven">chapter 1</a>).</p>
+    <p>The costs are in tracing and delivery. When one event starts three reactions and one of them publishes more events, it gets hard to answer "what started this run?". Many buses can deliver an event twice, so subscribers check event ids. And an agent that reacts to its own events can trigger itself in a loop. To prevent that, give each event an id that links it to its cause, and count the hops.</p>
+    <p>Events should carry facts and references, not instructions. "Build 5512 failed, log at this path" is data, while "please fix the build" is a prompt hidden in an event.</p>
+  </section>
+
+  <section id="task-queue">
+    <h2>Task queue</h2>
+    <p>A planner agent adds task 7 to a queue. A research worker claims it, writes the answer onto the task, and marks it done. The planner sees that task 7 is done and plans the next step.</p>
+<pre><code>{"id": 7, "kind": "research", "status": "ready",
+ "ask": "Which auth tests touch token expiry?",
+ "parent": 3, "result": null}</code></pre>
+    <p>In a task queue, the message is the task record itself: the request, its status, who owns it, and the result. Anyone can look at the board, including a person, who can also change a task. And a task survives when its worker crashes, because a lease hands it to another worker (<a href="12-long-running.html#queues-and-workers">chapter 12</a>).</p>
+    <p>A queue fits work that must survive crashes, many workers, retries, and people who need to watch or steer. The costs are slower handoffs, more moving parts, and tasks that can run more than once.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Hermes</strong> (v0.22.2) offers both channels and names the difference: "<code>delegate_task</code> is a function call; Kanban is a work queue where every handoff is a row any profile (or human) can see and edit". Its docs call Kanban comments "the inter-agent protocol": a worker that restarts reads the whole comment thread.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="blackboard">
+    <h2>Blackboard</h2>
+    <p>Three specialist agents debug the failing login test together. They share one board with sections for symptoms, possible causes, evidence, and ideas already ruled out.</p>
+<pre><code>board = {
+    "symptoms":   ["expired tokens still accepted",
+                   "test_login_expired_token: 200 != 401"],
+    "hypotheses": [
+        {"id": "h1", "by": "code", "text": "10-minute grace period in auth/session.py"},
+        {"id": "h2", "by": "logs", "text": "token cache serves stale entries"},
+    ],
+    "evidence":   [{"for": "h1", "by": "test", "ref": "runs/882/test.log"}],
+    "ruled_out":  ["clock skew on the test runner"],
+}
+next_agent = controller.pick(board)     # a set of rules, or a model call</code></pre>
+    <p>This is the blackboard architecture, an old idea from AI research. Specialists watch the board and add to it whenever they can help. A controller decides who acts next, based on what the board says. Here, the controller might see that h2 has no evidence yet and wake the test agent.</p>
+    <p>A blackboard differs from plain shared state in two ways. The board is organized like the problem, and nobody fixes the order of work in advance. It fits problems such as diagnosis, where the next step depends on what the specialists have found so far.</p>
+    <p>The board grows as agents add to it. So give each agent only the sections it needs, and remove entries that are no longer true.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Blackboard = a shared document with sections + specialists who add to it + a controller that picks who works next.</p>
+    </aside>
+  </section>
+
+  <section id="database">
+    <h2>Database</h2>
+    <p>Two coding agents must never edit the same file at once. Each one claims a file by inserting a row into a table. The database refuses a second row for the same file:</p>
+<pre><code>-- one row per file being edited; a second claim fails
+CREATE TABLE claims (path TEXT PRIMARY KEY, agent TEXT, run_id TEXT);
+INSERT INTO claims VALUES ('auth/session.py', 'coder-2', 'run-77');</code></pre>
+    <p>The second agent's insert fails, and its code tells the model "file taken". The rule never had to appear in a prompt, so no wording can get around it.</p>
+    <p>A database is shared state that lives outside any program. It survives crashes, many programs and runs can use it, and transactions and constraints keep its data consistent. Each agent can query exactly the rows it needs, which keeps its context small. A database fits long-lived systems with many processes, and work that needs an audit trail.</p>
+    <p>Do not let models write raw SQL against shared tables. Wrap the database in narrow tools such as <code>claim_file</code> and <code>get_task</code>.</p>
+  </section>
+
+  <section id="tradeoffs">
+    <h2>Tradeoffs</h2>
+    <p>Each channel trades the same six properties. Coupling is how much each side depends on the other. Consistency is whether every agent sees the same data. Observability is how easily you can see what happened. The other three are how failures are handled, how much enters a context, and whether things arrive in order.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Channels compared, part 1: coupling, consistency, and observability</caption>
+        <thead><tr><th scope="col">Channel</th><th scope="col">Coupling</th><th scope="col">Consistency</th><th scope="col">Observability</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Return values</th><td>Tight: the parent waits</td><td>Simple: one answer per call</td><td>Good, if child logs are kept</td></tr>
+          <tr><th scope="row">Shared state</th><td>Hidden: any writer affects every reader</td><td>Needs merge rules for writes that arrive together</td><td>Poor, unless writes are logged</td></tr>
+          <tr><th scope="row">Messages</th><td>Direct: the sender names the receiver</td><td>Each agent's view can drift</td><td>Good, if messages are logged</td></tr>
+          <tr><th scope="row">Event bus</th><td>Loose: publishers do not know subscribers</td><td>Subscribers catch up eventually</td><td>Hard: causes spread across subscribers</td></tr>
+          <tr><th scope="row">Task queue</th><td>Loose, through task records</td><td>The task's status is the truth</td><td>Good: the board shows every task</td></tr>
+          <tr><th scope="row">Blackboard</th><td>Loose, but tied to the board's layout</td><td>A controller settles conflicts</td><td>Good: the board is the record</td></tr>
+          <tr><th scope="row">Database</th><td>Loose, through a schema</td><td>Transactions and constraints</td><td>Good: the history can be queried</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Channels compared, part 2: failures, context, and order</caption>
+        <thead><tr><th scope="col">Channel</th><th scope="col">Failure handling</th><th scope="col">Context cost</th><th scope="col">Ordering</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Return values</th><td>The parent sees the error and decides</td><td>The whole answer enters the parent</td><td>Call order</td></tr>
+          <tr><th scope="row">Shared state</th><td>A bad write spreads silently</td><td>None until read</td><td>Undefined when writers overlap</td></tr>
+          <tr><th scope="row">Messages</th><td>Lost or repeated messages need rules</td><td>Every message enters a context</td><td>Per sender, if the channel keeps it</td></tr>
+          <tr><th scope="row">Event bus</th><td>Events can arrive twice; check ids</td><td>Only what a subscriber passes on</td><td>Within one topic, at best</td></tr>
+          <tr><th scope="row">Task queue</th><td>Leases, retries, and a dead-letter queue</td><td>The task's request and references</td><td>Roughly queue order</td></tr>
+          <tr><th scope="row">Blackboard</th><td>A wrong entry misleads every reader</td><td>Grows with the board, unless split</td><td>Chosen by the controller</td></tr>
+          <tr><th scope="row">Database</th><td>Transactions undo failed writes; constraints refuse bad ones</td><td>Only the rows queried</td><td>Per transaction</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>A sensible order to try them:</p>
+    <ul>
+      <li>Start with return values.</li>
+      <li>Add files in a shared workspace when answers get large, and return the paths.</li>
+      <li>Move to a task queue when work must survive crashes or be visible to people.</li>
+      <li>Use an event bus for triggers, not for conversations.</li>
+      <li>Use a database when many processes share facts that need rules.</li>
+      <li>Use a blackboard when several specialists must build one picture in an order you cannot plan.</li>
+    </ul>
+  </section>
+
+  <section id="protocols">
+    <h2>Protocols: MCP and A2A</h2>
+    <p>Say Patch should use the team's ticket system, which runs an MCP server. Patch's code asks the server which tools it offers, shows them to the model, and forwards the model's requests to the server.</p>
+    <p>MCP, the Model Context Protocol, connects an agent's code to tools, data, and prompts offered by another program (<a href="02-tools.html#discovery">chapter 2</a>). It standardizes how tools are listed and called. It is not an agent loop, because your code still runs the loop and decides what executes. It is not a security boundary either. The server's tools run with the server's access, and their results are untrusted text in your context. The spec itself says MCP "cannot enforce these security principles at the protocol level", so your code must.</p>
+    <p>An agent can also sit on the server side. Hermes (v0.22.2) offers <code>hermes mcp serve</code>, which lets other agents reach its chat conversations through MCP.</p>
+    <p>A2A, the Agent2Agent protocol (version 1.0), covers the other pairing. In its own words, "MCP standardizes agent-to-tool communication; A2A standardizes agent-to-agent communication." Each agent publishes an Agent Card, a JSON document that lists its skills, its address, and how to sign in. Work travels as a Task with an id and a lifecycle, much like a record in the task queue above, and long tasks report progress by polling, streaming, or webhooks. The agents do not need to share their memory, tools, or internal logic with each other.</p>
+    <p>Other protocols connect agents to editors. Hermes runs an ACP server for editors such as VS Code and Zed. Deep Agents can be exposed to editors over the Agent Client Protocol. None of these protocols decides what enters a context or who may do what. Those decisions stay with you.</p>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch talks through files</h2>
+    <p>Patch's subagents already return short reports (<a href="07-subagents.html#running-example">chapter 7</a>). Now the runtime saves each full report in a shared workspace and gives the parent only the summary and the file path. The reviewer's brief also carries paths to the diff and the test output instead of pasted copies. The subagents stay read-only, because the runtime does all the writing.</p>
+<pre><code># Patch v12: reports and briefs carry full contents
+- report = delegate(explorer, task)
+- review = delegate(reviewer, brief + diff_text + test_output)
+# Patch v13: summaries and paths in context, contents on disk
++ report = delegate(explorer, task, format="summary first, at most 5 lines")
++ path = workspace.save(f"explore/{task.issue}.md", report.full)   # the runtime writes
++ parent.add(tool_result(report.summary + "\nFull notes: " + path))
++ review = delegate(reviewer, brief + "Diff: /work/412.diff  Tests: /work/412-tests.txt")</code></pre>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>The parent's context floods</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>A child returns its whole transcript or a huge result, which buries the parent's earlier instructions.</dd>
+        <dt>How to spot it</dt><dd>Track the size of each tool result, and watch for jumps right after a delegation.</dd>
+        <dt>What to do</dt><dd>Set a length limit and a format for answers, and return file paths instead of contents.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Two agents overwrite each other</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>They share files or state, write at the same moment, and nobody owns anything.</dd>
+        <dt>How to spot it</dt><dd>Lost changes, merge conflicts, or reducer errors.</dd>
+        <dt>What to do</dt><dd>Give each file or field one writer, use claims the database enforces, or give each agent its own copy of the repository.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>An attack travels between agents</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>A research agent reads a hostile page and passes its demand along in a message. The next agent treats it as a request.</dd>
+        <dt>How to spot it</dt><dd>Agent messages contain instructions that no user gave.</dd>
+        <dt>What to do</dt><dd>Treat other agents' output as data, give messages fixed fields, and enforce permissions in every agent's code (<a href="10-sandboxing.html">chapter 10</a>).</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Which channel each pair of components uses, and why.</li>
+          <li>What enters each model's context, in what format, and how big it may get.</li>
+          <li>Who owns each file, record, and field, and how conflicts are settled.</li>
+          <li>Which messages count as requests, and which are only data.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>Queue, bus, and database plumbing.</li>
+          <li>Message formats and validation.</li>
+          <li>Ids that link events to their causes, and logs across agents.</li>
+          <li>Connections to MCP servers and other protocols.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">How do agents communicate? (Q26)</p>
+      <details class="answer"><summary>Answer</summary><p>Through ordinary channels: return values, shared state, messages, an event bus, a task queue, a blackboard, or a database. Coordination such as claims and task status stays in code. Information a model must act on has to enter its context, so good designs send references and keep answers short.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">A subagent produced 30 KB of notes. What should the parent receive?</p>
+      <ol class="options">
+        <li>All 30 KB, so nothing is lost</li>
+        <li data-correct>A short summary with evidence, plus the path to the full notes</li>
+        <li>Nothing. The parent can search the workspace later.</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>A short summary plus a path. The parent's context stays small, and the details are one read away. With nothing returned, the parent does not even know the notes exist.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Two agents must never edit the same file at once. Where should that rule live?</p>
+      <ol class="options">
+        <li>In both agents' system prompts</li>
+        <li data-correct>In a claim that your code or the database enforces, such as a unique key</li>
+        <li>In a message each agent sends before editing</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>In an enforced claim. A prompt is a request that a model can ignore, and a message announces a plan but stops nothing. A unique key refuses the second claim, whatever the models say.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Keep claims, locks, and task status in your code or your database, where rules are enforced, not in prompts.</li>
+      <li>Choose a channel by what must survive and who must see it. Use return values for short answers, files for details, a queue for durable work, and a database for shared facts.</li>
+      <li>Protocols such as MCP standardize how agents and tools connect, but not what enters a context or who may do what.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://modelcontextprotocol.io/specification/latest">Model Context Protocol specification</a>: hosts, clients, servers, and the security principles.</li>
+      <li><a href="https://a2a-protocol.org/latest/topics/key-concepts/">A2A key concepts</a>: Agent Cards, Tasks, Messages, and Artifacts.</li>
+      <li><a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> (Anthropic, 2025).</li>
+      <li><a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> (Cognition, 2025).</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>
