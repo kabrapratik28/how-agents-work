@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossary · How AI Agents Work</title>
+<meta name="description" content="Agent terms reduced to simpler primitives, with a link to the chapter that teaches each one.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Reference</p>
+    <h1>Glossary</h1>
+    <p class="lede">Every term here reduces to something simpler. When a word starts to feel vague, look up what it reduces to.</p>
+    <label for="glossary-filter" hidden>Filter terms</label>
+    <input type="search" id="glossary-filter" class="glossary-filter" placeholder="Filter terms, for example memory or idempotency" hidden>
+    <p class="w-muted" id="glossary-count" aria-live="polite"></p>
+  </header>
+
+  <section id="terms">
+    <h2>Terms</h2>
+
+    <article class="term" id="term-agent"><h3>Agent</h3>
+      <p class="reduces">= a runtime loop + a model that chooses the next action + tools + stop rules</p>
+      <p>In a workflow, code decides what happens next. In an agent, the model does, within limits the runtime enforces. <a href="00-llm-vs-agent.html#spectrum">Chapter 0</a></p></article>
+
+    <article class="term" id="term-agent-loop"><h3>Agent loop</h3>
+      <p class="reduces">= while loop: build context, call model, run requested tools, append results</p>
+      <p>The loop ends on a final answer, a budget, an error rule, or a person. <a href="01-agent-loop.html#observe-decide-act">Chapter 1</a></p></article>
+
+    <article class="term" id="term-approval-gate"><h3>Approval gate</h3>
+      <p class="reduces">= intercept a matching call + checkpoint + ask a person + resume with their decision</p>
+      <p>The approval is bound to one exact action. Edited or replacement actions are checked again. <a href="11-human-in-the-loop.html#mechanism">Chapter 11</a></p></article>
+
+    <article class="term" id="term-blackboard"><h3>Blackboard</h3>
+      <p class="reduces">= a shared workspace where specialists read and post partial results</p>
+      <p>Coordination happens through the shared store rather than direct messages. <a href="13-communication.html#blackboard">Chapter 13</a></p></article>
+
+    <article class="term" id="term-checkpoint"><h3>Checkpoint</h3>
+      <p class="reduces">= a durable snapshot of run state after a step</p>
+      <p>It holds enough to resume: history, plan, step, pending actions. <a href="12-long-running.html#checkpoints">Chapter 12</a></p></article>
+
+    <article class="term" id="term-code-as-action"><h3>Code as action</h3>
+      <p class="reduces">= the model writes a short program instead of a single tool call + a sandbox runs it</p>
+      <p>One action can call several functions, loop, and compute. It needs strong containment. <a href="02-tools.html">Chapter 2</a></p></article>
+
+    <article class="term" id="term-compaction"><h3>Compaction</h3>
+      <p class="reduces">= replace old context with a shorter form (summary, placeholders, references)</p>
+      <p>It keeps a long run inside the window. Originals can stay in storage. A careless summary can drop constraints. <a href="04-context.html#compaction">Chapter 4</a></p></article>
+
+    <article class="term" id="term-containment"><h3>Containment</h3>
+      <p class="reduces">= limits on what the process can touch at all: files, network, devices, resources</p>
+      <p>Enforced by the OS, a container, a VM, or the network. Its strength depends on configuration. <a href="10-sandboxing.html#permission-vs-boundary">Chapter 10</a></p></article>
+
+    <article class="term" id="term-context"><h3>Context</h3>
+      <p class="reduces">= the exact input to one model call, rebuilt every call</p>
+      <p>Instructions, tool definitions, conversation, tool results, retrieved material. A view of state under a token budget. <a href="04-context.html#anatomy">Chapter 4</a></p></article>
+
+    <article class="term" id="term-context-pollution"><h3>Context pollution</h3>
+      <p class="reduces">= misleading or distracting content in the context</p>
+      <p>Irrelevant files, stale facts, failed attempts, or injected instructions. <a href="04-context.html#pollution">Chapter 4</a></p></article>
+
+    <article class="term" id="term-context-window"><h3>Context window</h3>
+      <p class="reduces">= the maximum tokens one call can take, input plus output</p>
+      <p>A hard limit. Quality can drop well before you reach it. <a href="04-context.html#windows-and-budgets">Chapter 4</a></p></article>
+
+    <article class="term" id="term-credential-isolation"><h3>Credential isolation</h3>
+      <p class="reduces">= keep long-lived secrets out of the agent's reach; hand out scoped, short-lived tokens</p>
+      <p>If there is nothing valuable to steal, exfiltration does little harm. <a href="10-sandboxing.html#credential-isolation">Chapter 10</a></p></article>
+
+    <article class="term" id="term-delegation"><h3>Delegation</h3>
+      <p class="reduces">= a tool call that starts another agent loop with a task spec</p>
+      <p>The spec says the objective, scope, tools, output format, budget, and what the child owns. <a href="07-subagents.html#delegation">Chapter 7</a></p></article>
+
+    <article class="term" id="term-durable-agent"><h3>Durable agent</h3>
+      <p class="reduces">= an agent with recovery guarantees: resume after crashes without losing work or repeating side effects</p>
+      <p>Defined by what it can recover from, not by how long it runs. <a href="12-long-running.html#interactive-vs-durable">Chapter 12</a></p></article>
+
+    <article class="term" id="term-egress-policy"><h3>Egress policy</h3>
+      <p class="reduces">= a list of network destinations the process may reach</p>
+      <p>It blocks exfiltration to unknown hosts. An allowed host can still carry data out. <a href="10-sandboxing.html#network-policies">Chapter 10</a></p></article>
+
+    <article class="term" id="term-episodic-memory"><h3>Episodic memory</h3>
+      <p class="reduces">= stored records of past tasks + retrieval by similarity to the current task</p>
+      <p>What happened, what worked, what failed. <a href="05-memory.html#episodic-memory">Chapter 5</a></p></article>
+
+    <article class="term" id="term-event-driven"><h3>Event-driven agent</h3>
+      <p class="reduces">= a handler that loads state, runs the loop, and saves state, once per event</p>
+      <p>Messages, webhooks, schedules, or file changes start runs. <a href="01-agent-loop.html#event-driven">Chapter 1</a></p></article>
+
+    <article class="term" id="term-external-control"><h3>External service control</h3>
+      <p class="reduces">= a rule enforced by the other system, whatever the agent does</p>
+      <p>Branch protection, scoped tokens, access policies, deduplication on the receiver. <a href="10-sandboxing.html#permission-vs-boundary">Chapter 10</a></p></article>
+
+    <article class="term" id="term-graph-workflow"><h3>Graph workflow</h3>
+      <p class="reduces">= a state machine whose nodes may call a model</p>
+      <p>You define the process shape. The model works inside nodes or picks some edges. <a href="14-architectures.html#graph-workflow">Chapter 14</a></p></article>
+
+    <article class="term" id="term-handoff"><h3>Handoff</h3>
+      <p class="reduces">= transfer control of the conversation to another agent</p>
+      <p>Unlike agents-as-tools, the caller does not get control back with a result. <a href="07-subagents.html">Chapter 7</a></p></article>
+
+    <article class="term" id="term-harness"><h3>Harness (runtime)</h3>
+      <p class="reduces">= the ordinary code around the model: loop, context builder, policy, tool dispatch, state</p>
+      <p>Control and authority live here. <a href="00-llm-vs-agent.html#five-parts">Chapter 0</a></p></article>
+
+    <article class="term" id="term-hierarchical"><h3>Hierarchical agents</h3>
+      <p class="reduces">= delegation more than one level deep</p>
+      <p>Directors, managers, workers. Each level adds coordination cost and summary loss. <a href="14-architectures.html#hierarchical">Chapter 14</a></p></article>
+
+    <article class="term" id="term-idempotency"><h3>Idempotency</h3>
+      <p class="reduces">= doing it twice has the same effect as doing it once</p>
+      <p>For outside effects, the receiver must deduplicate on a key that you saved before the first attempt. <a href="12-long-running.html#idempotency">Chapter 12</a></p></article>
+
+    <article class="term" id="term-instruction"><h3>Instruction (as a control)</h3>
+      <p class="reduces">= text asking the model to behave a certain way</p>
+      <p>It depends on the model following it. Injected text can argue against it. <a href="10-sandboxing.html#permission-vs-boundary">Chapter 10</a></p></article>
+
+    <article class="term" id="term-llm-judge"><h3>LLM as judge</h3>
+      <p class="reduces">= a model call that grades an output against a rubric</p>
+      <p>Cheap and flexible. Calibrate it against human grades before you trust it. <a href="16-evaluation.html">Chapter 16</a></p></article>
+
+    <article class="term" id="term-manager-workers"><h3>Manager and workers</h3>
+      <p class="reduces">= one agent splits work, subagents do the parts, the manager combines results</p>
+      <p>Also called orchestrator and workers. <a href="14-architectures.html#manager-workers">Chapter 14</a></p></article>
+
+    <article class="term" id="term-mcp"><h3>MCP (Model Context Protocol)</h3>
+      <p class="reduces">= RPC for listing and calling tools, resources, and prompts in another process</p>
+      <p>It standardizes the plumbing between an agent and tool servers. It is not an agent loop and not a security boundary. <a href="02-tools.html">Chapter 2</a></p></article>
+
+    <article class="term" id="term-memory"><h3>Memory</h3>
+      <p class="reduces">= storage + a write policy + retrieval + injection into context</p>
+      <p>Not the model remembering. <a href="05-memory.html#not-magic">Chapter 5</a></p></article>
+
+    <article class="term" id="term-model"><h3>Model</h3>
+      <p class="reduces">= a function from one context to generated tokens</p>
+      <p>It runs no code and keeps nothing between calls. <a href="00-llm-vs-agent.html#llm">Chapter 0</a></p></article>
+
+    <article class="term" id="term-observation"><h3>Observation (tool result)</h3>
+      <p class="reduces">= a message with the outcome of a tool call, tied to its call id</p>
+      <p>Output, error, or "rejected". <a href="01-agent-loop.html#terminology">Chapter 1</a></p></article>
+
+    <article class="term" id="term-operation-states"><h3>Operation states</h3>
+      <p class="reduces">= intended, attempted, confirmed, outcome unknown</p>
+      <p>Track them for every outside side effect so recovery knows what to do. <a href="12-long-running.html#idempotency">Chapter 12</a></p></article>
+
+    <article class="term" id="term-planning"><h3>Planning</h3>
+      <p class="reduces">= generate and maintain an explicit list of intended future actions</p>
+      <p>Text, a todo structure in state, or a separate planner's output. <a href="06-planning.html#what-planning-means">Chapter 6</a></p></article>
+
+    <article class="term" id="term-planner-executor"><h3>Planner and executor</h3>
+      <p class="reduces">= one call writes a plan + a loop carries out steps + replanning on failure</p>
+      <p><a href="06-planning.html#planner-executor">Chapter 6</a></p></article>
+
+    <article class="term" id="term-progressive-disclosure"><h3>Progressive disclosure</h3>
+      <p class="reduces">= short descriptions always in context + full content loaded only when needed</p>
+      <p>The usual way skills are loaded. <a href="08-skills.html">Chapter 8</a></p></article>
+
+    <article class="term" id="term-prompt-caching"><h3>Prompt caching</h3>
+      <p class="reduces">= the provider reuses computation for an identical prefix</p>
+      <p>Lowers cost and latency for the cached part. Does not free context space. Reuse depends on provider rules. <a href="04-context.html#prompt-caching">Chapter 4</a></p></article>
+
+    <article class="term" id="term-prompt-injection"><h3>Prompt injection</h3>
+      <p class="reduces">= instructions hidden in data the model reads</p>
+      <p>A web page, file, or email that steers the agent. Defend outside the model. <a href="10-sandboxing.html#threats">Chapter 10</a></p></article>
+
+    <article class="term" id="term-provider"><h3>Provider service</h3>
+      <p class="reduces">= the API in front of the model: may store conversations and cache prefixes</p>
+      <p>Each call still conditions only on that call's context. <a href="00-llm-vs-agent.html#five-parts">Chapter 0</a></p></article>
+
+    <article class="term" id="term-react"><h3>ReAct loop</h3>
+      <p class="reduces">= alternate model reasoning and tool actions, one step at a time</p>
+      <p>The simple loop most agents start from. <a href="01-agent-loop.html#simple-loop">Chapter 1</a></p></article>
+
+    <article class="term" id="term-reflection"><h3>Reflection</h3>
+      <p class="reduces">= another model call that critiques earlier output or state</p>
+      <p>Best with an outside signal such as tests. It costs calls and can repeat the same mistake. <a href="06-planning.html#reflection">Chapter 6</a></p></article>
+
+    <article class="term" id="term-retrieval"><h3>Retrieval</h3>
+      <p class="reduces">= query + filters + candidates + selection under a budget + provenance check + injection</p>
+      <p>Similarity is not relevance. Relevance is not correctness. <a href="05-memory.html#retrieval-trace">Chapter 5</a></p></article>
+
+    <article class="term" id="term-run"><h3>Run, step, turn, session, trajectory</h3>
+      <p class="reduces">= one task execution, one model call plus its tools, one user exchange, a saved conversation, the recorded history</p>
+      <p><a href="01-agent-loop.html#vocabulary">Chapter 1</a></p></article>
+
+    <article class="term" id="term-runtime-gate"><h3>Runtime gate</h3>
+      <p class="reduces">= code in the tool path that blocks or pauses matching actions</p>
+      <p>Enforced on the paths it intercepts. An unintercepted path goes around it. <a href="10-sandboxing.html#permission-vs-boundary">Chapter 10</a></p></article>
+
+    <article class="term" id="term-sandbox"><h3>Sandbox</h3>
+      <p class="reduces">= containment applied to the agent's tools</p>
+      <p>A container, VM, or OS sandbox with limited files, network, and credentials. <a href="10-sandboxing.html">Chapter 10</a></p></article>
+
+    <article class="term" id="term-semantic-memory"><h3>Semantic memory</h3>
+      <p class="reduces">= stored items retrieved by relevance to the current need</p>
+      <p>Often vector search, often combined with keywords. <a href="05-memory.html#semantic-memory">Chapter 5</a></p></article>
+
+    <article class="term" id="term-skill"><h3>Skill</h3>
+      <p class="reduces">= a reusable package selected at runtime: instructions, tools, a workflow, a script, knowledge, or a learned procedure</p>
+      <p>What it reduces to depends on the system. <a href="08-skills.html#reduces-to">Chapter 8</a></p></article>
+
+    <article class="term" id="term-state"><h3>State</h3>
+      <p class="reduces">= what the system tracks to do its work: conversation, runtime variables, the world, saved data</p>
+      <p>Context is a view of it. <a href="03-state.html">Chapter 3</a></p></article>
+
+    <article class="term" id="term-structured-memory"><h3>Structured memory</h3>
+      <p class="reduces">= a small curated file or table of facts, usually injected into every context</p>
+      <p>"Project uses PostgreSQL." <a href="05-memory.html#structured-memory">Chapter 5</a></p></article>
+
+    <article class="term" id="term-structured-output"><h3>Structured output</h3>
+      <p class="reduces">= model output that must match a schema: constrained decoding, or validate and retry</p>
+      <p><a href="02-tools.html#structured-outputs">Chapter 2</a></p></article>
+
+    <article class="term" id="term-subagent"><h3>Subagent</h3>
+      <p class="reduces">= another agent loop with its own context, started by a parent, returning a result</p>
+      <p><a href="07-subagents.html#first-principles">Chapter 7</a></p></article>
+
+    <article class="term" id="term-todo"><h3>Todo list</h3>
+      <p class="reduces">= a list of tasks with statuses in runtime state, updated by a tool, often shown to the model each turn</p>
+      <p>One way to make a plan durable. <a href="06-planning.html#todo-state">Chapter 6</a></p></article>
+
+    <article class="term" id="term-tool"><h3>Tool</h3>
+      <p class="reduces">= name + description + input schema + implementation + policy metadata</p>
+      <p><a href="02-tools.html#what-is-a-tool">Chapter 2</a></p></article>
+
+    <article class="term" id="term-tool-call"><h3>Tool call</h3>
+      <p class="reduces">= structured model output + runtime function dispatch</p>
+      <p>A request, not an execution. <a href="02-tools.html#flow">Chapter 2</a></p></article>
+
+    <article class="term" id="term-trifecta"><h3>Lethal trifecta</h3>
+      <p class="reduces">= private data + untrusted content + a way to send data out</p>
+      <p>An agent with all three can be steered into leaking data. Remove one leg. <a href="10-sandboxing.html">Chapter 10</a></p></article>
+
+    <article class="term" id="term-verification"><h3>Verification</h3>
+      <p class="reduces">= checking evidence of success: tests, API results, a person, or a separate checker</p>
+      <p>Different from the model proposing it is done. <a href="00-llm-vs-agent.html#finished">Chapter 0</a></p></article>
+
+    <article class="term" id="term-workflow"><h3>Workflow</h3>
+      <p class="reduces">= a code-chosen sequence of steps, some of which call a model</p>
+      <p>Often the right choice when the steps are known. <a href="00-llm-vs-agent.html#spectrum">Chapter 0</a></p></article>
+
+    <article class="term" id="term-working-memory"><h3>Working memory</h3>
+      <p class="reduces">= whatever is in the current context</p>
+      <p><a href="05-memory.html#working-memory">Chapter 5</a></p></article>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

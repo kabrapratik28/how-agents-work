@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture exercises · How AI Agents Work</title>
+<meta name="description" content="Ten design scenarios. Write your own architecture, then compare it with one reasonable design, its tradeoffs, and what could go wrong.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 20 · Thinking like a designer</p>
+    <h1>Architecture exercises</h1>
+    <p class="lede">Ten design problems. Write your own architecture for each one, then compare it with one reasonable design and its tradeoffs.</p>
+    <div class="loop-map" data-focus="all"></div>
+  </header>
+
+  <section id="how-to-use">
+    <h2>How to use these exercises</h2>
+    <p>These are design exercises, not programming exercises. Each one gives you a scenario and a few questions. Write your answers in the box. Your notes stay in this browser. Then open the reveal and compare.</p>
+    <p>The reveal shows one reasonable architecture. It is not the only answer. A different design can be just as good if you can defend its tradeoffs. Look for the places where you decided differently. Then ask which choice you would defend in a design review.</p>
+    <p>Every reveal covers the same ground, in the same order:</p>
+    <ul>
+      <li>A diagram of the parts, labeled by who does each step.</li>
+      <li>The tools, each with an effect class.</li>
+      <li>What state persists, and where it lives.</li>
+      <li>What the agent remembers, if anything.</li>
+      <li>Whether to use subagents.</li>
+      <li>What triggers a run.</li>
+      <li>What happens when something fails.</li>
+      <li>Which actions need a person's approval.</li>
+      <li>The security boundary: what the process can touch at all.</li>
+      <li>What stays deterministic.</li>
+      <li>How to evaluate it.</li>
+      <li>Alternatives, and what could go wrong.</li>
+    </ul>
+    <p>Effect classes come from <a href="02-tools.html#destructive-tools">chapter 2</a>. A read-only tool changes nothing. A reversible write changes something you can undo, such as a draft or a file in a sandbox. The third class is external or irreversible: the action leaves your system or cannot be undone, such as an email, a payment, or a merged change. The tool lists below call it "External" for short. A tool whose effect depends on its arguments, such as a shell, has no fixed class.</p>
+    <p>In the diagrams, each step says who performs it. The colors repeat that. Violet is the <span class="c-model">model</span> and blue is <span class="c-runtime">your code</span>. Green is <span class="c-tool">tools and the outside world</span>. Amber is <span class="c-state">stored state</span>, and rose is <span class="c-human">a person</span>.</p>
+    <p>Two habits help in every scenario. First, start from the least agentic design that works (<a href="00-llm-vs-agent.html#spectrum">chapter 0</a>). Let the model choose the next step only where that step depends on what the agent finds. Second, put every side effect behind code you control. The model proposes actions. Your code decides whether they run.</p>
+    <p>Some scenarios need no agent at all. Saying so, with reasons, is a strong answer. When you finish an exercise, grade your design with the <a href="#rubric">rubric</a> at the end of the page.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>A reference architecture = a diagram + tools with effect classes + a state model + rules for failure, approval, the boundary, and evaluation.</p>
+    </aside>
+  </section>
+
+  <article class="exercise" id="ex-competitors">
+    <h2>Competitor report every Monday</h2>
+    <p>A product team tracks eight competitors. Every Monday by 7:00 they want a report in their team channel and a shared folder. It covers what changed last week across about 40 sources: pricing pages, release notes, product pages, job posts, and news mentions. Every claim must link to its source.</p>
+    <ol>
+      <li>What tools does it need?</li>
+      <li>What state should persist?</li>
+      <li>Does it need memory?</li>
+      <li>Should it use subagents?</li>
+      <li>Does it need scheduling?</li>
+      <li>What should happen if one website fails?</li>
+      <li>How should success be evaluated?</li>
+    </ol>
+    <label for="ex-competitors-notes">Your design</label>
+    <textarea id="ex-competitors-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>A deterministic workflow is enough here. The sources are known in advance, and so are the schedule and the shape of the report. Code owns the control flow. The model does three jobs inside it: pull facts out of a changed page, judge which changes matter, and write the report. No step needs the model to choose what happens next.</p>
+      <figure>
+<pre class="diagram" aria-label="Weekly workflow. A schedule starts a parallel fetch and diff for each source. Failed sources are marked stale. Changed pages go to the model for extraction. The model ranks the changes and writes the report. Code checks every quote and posts once per week.">
+<span class="c-runtime">Schedule: Monday 06:00 (code)</span>
+  |
+  v
+<span class="c-runtime">For each of 40 sources, in parallel (code):</span>
+  <span class="c-tool">fetch source</span> --> <span class="c-runtime">normalize</span> --> <span class="c-runtime">diff with</span> <span class="c-state">last week's snapshot</span>
+       |                                     |
+       | failed 3 times                      | changed
+       v                                     v
+  <span class="c-runtime">mark "stale", keep old snapshot</span>    <span class="c-model">extract facts + quotes (model)</span>
+       |                                     |
+       +------------------+------------------+
+                          v
+<span class="c-model">Rank and dedupe the changes (model + code)</span>
+  |
+  v
+<span class="c-model">Write the report (model)</span> --> <span class="c-runtime">check each claim's quote (code)</span>
+  |
+  v
+<span class="c-tool">Post to channel + save doc</span> <span class="c-runtime">(code, once per week key)</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>fetch_page(url)</code> <span class="w-pill">Read-only</span> Goes through a proxy with per-site rate limits. Respects robots.txt.</li>
+        <li><code>search_news(company, since)</code> <span class="w-pill">Read-only</span> A news API with a date filter.</li>
+        <li><code>load_snapshot</code>, <code>save_snapshot</code> <span class="w-pill">Reversible write</span> A versioned store of each source's text and hash.</li>
+        <li><code>post_report(week, text)</code> <span class="w-pill">External</span> Posts once per week key. A rerun edits the same post.</li>
+      </ul>
+      <p>Your code calls these functions. The model never sees them as tools. So text injected into a competitor's page has nothing to call.</p>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>Per source: the last snapshot, its hash, fetch time, and status. Per run: the week key as run id, each source's status, extracted facts with URLs, the draft, and delivery status.</td></tr>
+            <tr><th scope="row">Memory</th><td>Barely any. Last week's snapshots are state, not memory. A short guide, edited by the team, says what matters and what to ignore. The ranking step always sees it. Code checks past reports so old news is not repeated.</td></tr>
+            <tr><th scope="row">Subagents</th><td>No. Fetching and extracting is a parallel map in code. Each model call already sees one source, so you get isolation without delegation. Subagents would add cost and variance, with nothing to coordinate.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>Yes, a schedule: Monday 06:00, due by 07:00. The week key, such as <code>2026-W43</code>, makes a duplicate trigger harmless.</td></tr>
+            <tr><th scope="row">When things fail</th><td>One site fails: retry three times over 30 minutes. Then mark it stale, keep last week's snapshot, and say so in the report: "Acme pricing: not checked, HTTP 503." A failed fetch never counts as "no change". If more than a quarter of sources fail, hold the report and alert the owner.</td></tr>
+            <tr><th scope="row">Approvals</th><td>A person approves each draft for the first month. After that, none. The audience is internal, and nothing irreversible happens.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>Fetched pages are untrusted input. The model steps have no tools, so injected text can at worst distort a summary. Egress goes through the proxy. The posting credential lives in the post step, never in a context.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>The schedule, source list, fetching, retries, normalizing, diffing, dedupe, quote checks, posting, and the week key.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Replay 20 past weeks that the team labeled. Measure how many important changes the report caught, and count invented ones. Code checks that each quote appears on its linked page as fetched this week. In production, track stale sources, uncited claims (target zero), and "you missed this" replies.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>One agent loop with web search, told to "research our competitors". It can find new sources. But its coverage changes from week to week, and it is hard to evaluate. It works better as a monthly discovery run that proposes new sources for a person to add.</li>
+        <li>A change-detection email with no model at all. If the team only needs "these pages changed", that is enough. The model adds value only by judging and summarizing.</li>
+        <li>One subagent per competitor. Worth it only if each competitor needs deep, open-ended research across dozens of sources.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>A site redesign makes the whole page look changed. The model then reports a price change that never happened. Normalize the text, and send large diffs to a person.</li>
+        <li>A source fails quietly for weeks. List stale sources at the top of the report.</li>
+        <li>The summary states something no source says. The quote check catches it.</li>
+        <li>A retry posts the report twice. Check the week key before posting.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-coding">
+    <h2>Coding agent: fix failing CI on pull requests</h2>
+    <p>A monorepo gets about 400 pull requests a day. About one in five fails CI on the first try. Most failures are small: a lint error, a type error, a stale snapshot, a test broken by a renamed function. The team wants an agent that reacts when CI fails on a pull request. It should push a fix to the branch, or explain the failure in a comment.</p>
+    <ol>
+      <li>What triggers a run? What stops the agent from triggering itself forever?</li>
+      <li>Which tools does it need, and what is each one's effect class?</li>
+      <li>Where does it run, and which credentials does it hold?</li>
+      <li>When may it push a commit, and when should it only comment?</li>
+      <li>How do you stop it from "fixing" a test by weakening it?</li>
+      <li>How do you know it helps?</li>
+    </ol>
+    <label for="ex-coding-notes">Your design</label>
+    <textarea id="ex-coding-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>An event-driven agent with one small loop per failure. Code decides whether to run at all. The model decides how to fix the failure. Code decides whether the fix may be pushed. Inside, it is Patch's loop from <a href="09-coding-agents.html#walkthrough">chapter 9</a>, with a different trigger and a stricter exit.</p>
+      <figure>
+<pre class="diagram" aria-label="CI-fix agent. A CI failure webhook goes to code triage, then a single rerun. If the failure persists, an agent loop works in a fresh sandbox. A code gate then either pushes one commit or posts a comment.">
+<span class="c-tool">Webhook: CI failed on pull request #4821</span>
+  |
+  v
+<span class="c-runtime">Triage (code): author opted in? under 2 attempts? known check type?</span>
+  |  no --> stop
+  v  yes
+<span class="c-runtime">Rerun the failed job once (code)</span> --> passes? label "flaky" and stop
+  |  still fails
+  v
+<span class="c-model">Agent loop in a fresh sandbox (model + tools, 25 steps)</span>
+  <span class="c-tool">read log, search, read, edit, run the failing check</span>
+  |
+  v
+<span class="c-runtime">Gate (code): check passes? diff small? no assertions removed?</span>
+  |  yes --> <span class="c-tool">push one commit, comment (code)</span>
+  |  no  --> <span class="c-tool">comment with diagnosis and a suggested patch (code)</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>get_ci_log(job)</code> <span class="w-pill">Read-only</span> The failing step's log. Long logs are saved as files with a preview.</li>
+        <li><code>search_files</code>, <code>read_file</code> <span class="w-pill">Read-only</span> The pull request's checkout only.</li>
+        <li><code>edit_file</code> <span class="w-pill">Reversible write</span> Inside the sandbox checkout.</li>
+        <li><code>run_check(name)</code> <span class="w-pill">Reversible write</span> Runs in the sandbox, using the exact command CI ran for that check. There is no general shell.</li>
+        <li><code>push_commit</code>, <code>post_comment</code> <span class="w-pill">External</span> Called by the gate after the loop ends. The model cannot call them.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>Per pull request: attempts, the head commit each attempt saw, the outcome, and a link to the trace. The key is pull request plus head commit, so a webhook delivered twice runs once.</td></tr>
+            <tr><th scope="row">Memory</th><td>A knowledge file per repo: how to update snapshots, which lint fixes are safe. People curate it. Past fixes indexed by error signature are a useful extra.</td></tr>
+            <tr><th scope="row">Subagents</th><td>No. One failure, one narrow task, a small context.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>The CI-failed webhook. The agent's own commit triggers CI again. If that run fails the same way, the agent does not run again. Hard cap: two attempts per pull request.</td></tr>
+            <tr><th scope="row">When things fail</th><td>Flaky test: the rerun passes, so label it and stop. Budget used up: comment with the diagnosis so far. Branch moved during the run: discard the fix. Never force-push.</td></tr>
+            <tr><th scope="row">Approvals</th><td>The author opts in with a label. That is consent to automatic commits. Without it, the agent only comments with a suggested patch. Diffs that touch CI config, lockfiles, or test assertions always drop to comment-only.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>An ephemeral container with the checkout. No deploy or CI secrets. Egress to the package registry only. Pull request code is untrusted and may be hostile. The push token lives in the gate, scoped to this branch and short-lived. Pull requests from forks get comments only.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Triage, the rerun, attempt caps, choosing the check, the gate's diff rules, pushing, and commenting.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Replay 200 past failures with known human fixes. A trial succeeds if the check passes, the full CI run passes, and the diff touches no forbidden paths. In production, track how often authors keep the commit, reverts within a day, cost per attempt, and time to green.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>Deterministic autofix first. Lint fixers and snapshot updates need no model. Run them before the agent.</li>
+        <li>Comment-only for everyone. Less value, much less risk. A good first month.</li>
+        <li>Run on request from a developer's machine instead. A person is present and there is more context, but nothing is automatic.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>The agent and CI trigger each other in a loop. Attempt caps and the same-failure rule stop it.</li>
+        <li>The agent deletes an assertion or adds a skip marker. The gate rejects diffs that remove assertions or add skips.</li>
+        <li>Hostile code in a pull request steals a token from the sandbox. There are no tokens in the sandbox to steal.</li>
+        <li>Comments on every failure annoy people. Comment only when there is a concrete diagnosis.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-support">
+    <h2>Customer support agent</h2>
+    <p>An online store handles 40,000 orders a month and gets about 2,000 support messages a week. Common requests: where is my order, change the address, cancel, return, refund, product questions. Policy: refunds up to $100 within 30 days are automatic. Larger refunds need a person. The team wants the agent to resolve what it safely can, and hand the rest to people with a summary.</p>
+    <ol>
+      <li>Which parts are a workflow, and which need an agent loop?</li>
+      <li>Which tools does it need? Which ones are external?</li>
+      <li>Which actions need approval, and who approves?</li>
+      <li>What does the model see for one conversation? What stays out?</li>
+      <li>How might a customer's message trick it, and what stops that?</li>
+      <li>What counts as a resolved conversation?</li>
+    </ol>
+    <label for="ex-support-notes">Your design</label>
+    <textarea id="ex-support-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>A router in code, then a small agent per conversation with narrow tools. Refunds and replies are external actions. The refund policy is enforced inside the refund tool. The prompt can describe the policy, but only code can enforce it.</p>
+      <figure>
+<pre class="diagram" aria-label="Support agent. A message arrives. Code verifies the customer and loads orders. A small model call classifies intent. Status questions get a template answer from code. Everything else goes to a support agent loop, which hands off to a person for large refunds, legal issues, or repeat contacts.">
+<span class="c-tool">Email or chat message arrives (event)</span>
+  |
+  v
+<span class="c-runtime">Verify the customer, load orders and history (code)</span>
+  |
+  v
+<span class="c-model">Classify the intent (model, small and cheap)</span>
+  |
+  +--> order status --> <span class="c-runtime">template answer with live data (code)</span>
+  |
+  +--> anything else --> <span class="c-model">support agent loop (model + narrow tools)</span>
+                            |
+                            | refund over $100, legal, 3rd contact
+                            v
+                         <span class="c-human">hand off to a person, with a summary</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>get_order</code>, <code>get_tracking</code> <span class="w-pill">Read-only</span> Only the verified customer's orders. The customer id comes from the session, never from the model's arguments.</li>
+        <li><code>search_help(query)</code> <span class="w-pill">Read-only</span> Policy and help articles.</li>
+        <li><code>update_address(order, address)</code> <span class="w-pill">Reversible write</span> Only before the order ships.</li>
+        <li><code>issue_refund(order, amount, reason)</code> <span class="w-pill">External</span> Checks the policy itself. Up to $100 within 30 days runs at once. Anything else becomes an approval request. Money goes only to the original payment method.</li>
+        <li><code>send_reply(text)</code> <span class="w-pill">External</span> Every outgoing message passes through it, so it is logged and rate-limited.</li>
+        <li><code>handoff(summary)</code> <span class="w-pill">Reversible write</span> Moves the conversation to the human queue.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>In the helpdesk, the source of truth: the verified customer, orders, intent, actions with their ids, status, and messages. The agent keeps no separate copy.</td></tr>
+            <tr><th scope="row">Memory</th><td>Customer history comes from the CRM at use time. Help articles come by retrieval. Nothing a customer says becomes a stored fact. "You promised me a discount" is a claim to check, not a memory.</td></tr>
+            <tr><th scope="row">Subagents</th><td>No. Conversations are short and independent. Scale comes from running many conversations, not many agents per conversation.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>Events: a new message, a customer reply, a carrier update. A scheduled job follows up on quiet conversations and closes stale ones.</td></tr>
+            <tr><th scope="row">When things fail</th><td>A tool error leads to an honest reply and a handoff. The agent says a refund happened only if the tool returned a refund id. Refund retries reuse the payment provider's idempotency key, or look up existing refunds first.</td></tr>
+            <tr><th scope="row">Approvals</th><td>Refunds over $100 or after 30 days, goodwill credits, and anything that mentions legal action or safety. A support lead approves. They see the order, the policy rule, the exact action, and the draft reply.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>Tools are scoped to the verified customer at the API level. The model sees this conversation, this customer's orders and history, and the policy text that applies. It never sees card details or other customers' data. A jailbroken model can at most request a refund, and the tool still applies the policy.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Identity checks, order lookup, policy thresholds, refund limits, templated status answers, routing, and response-time timers.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Replay 500 labeled past conversations against fake order and payment services. A trial passes only with the right action or handoff, no policy violation, and no claim the tools did not confirm. In production, a conversation counts as resolved only if it stays closed for 7 days. Also track handoff rate per intent, refund dollars per conversation, and sampled audits.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>A pure workflow: intent detection, forms, and templates. It is cheaper and predictable, and it covers the most common requests. Many teams start here and add the agent for the long tail.</li>
+        <li>Draft-only: the agent drafts and a person sends every reply. Slow, but a safe first month.</li>
+        <li>Separate agents per department, with handoffs between them. Useful only if departments need different tools and permissions. Each handoff is a new chance to misroute.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>Social engineering: "Send the refund to this other card." The payment destination is never a model argument.</li>
+        <li>The agent promises a refund the policy does not allow. Retrieve the policy text, enforce it in the tool, and state only actions a tool confirmed.</li>
+        <li>A timeout leads to a second refund. Use idempotency keys, or look up before retrying.</li>
+        <li>Everything gets handed off. Watch the handoff rate per intent, and fix the worst intents first.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-research">
+    <h2>Personal research agent</h2>
+    <p>You want an agent that answers research questions. One example: "What do recent studies say about creatine and sleep?" Another: "Compare three vector databases for 50 million documents." It searches the web and papers, reads sources, and writes a short report with citations. It runs when you ask, sometimes for 20 minutes. Over time it should learn what you already know and which sources you trust.</p>
+    <ol>
+      <li>Is this an agent or a workflow? Why?</li>
+      <li>Would subagents help? For which part?</li>
+      <li>What should it remember across questions? Who approves what it remembers?</li>
+      <li>What happens when sources disagree, or a page tries to give it instructions?</li>
+      <li>When should it stop researching?</li>
+      <li>How would you evaluate a report?</li>
+    </ol>
+    <label for="ex-research-notes">Your design</label>
+    <textarea id="ex-research-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>A real agent. The next search depends on what the last one found. A lead agent scopes the question. Researcher subagents explore sub-questions in parallel, each with read-only tools and its own context. The lead writes the report from their condensed notes. Research stops when every sub-question has cited notes, or when the budget runs out. Code checks the citations.</p>
+      <figure>
+<pre class="diagram" aria-label="Research agent. A lead agent plans sub-questions and starts three researcher subagents in parallel. They write notes with quotes and URLs to files. The lead merges the notes. Code checks every quote against its source before the report reaches you.">
+<span class="c-human">You ask a question</span>
+  |
+  v
+<span class="c-model">Lead agent: scope it, plan 3-5 sub-questions (model)</span>
+  |
+  +--> <span class="c-model">researcher 1</span> --+
+  +--> <span class="c-model">researcher 2</span> --+--> <span class="c-state">notes with quotes and URLs (files)</span>
+  +--> <span class="c-model">researcher 3</span> --+
+  |
+  v
+<span class="c-model">Lead agent: merge notes, list conflicts, maybe one more round</span>
+  |
+  v
+<span class="c-runtime">Citation check (code): each quote must appear in its source</span>
+  |
+  v
+<span class="c-human">Report to you, plus proposed memory updates for you to accept</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>web_search</code>, <code>search_papers</code> <span class="w-pill">Read-only</span> Researchers only. Titles, snippets, and URLs.</li>
+        <li><code>fetch(url)</code> <span class="w-pill">Read-only</span> Researchers only. Saves the cleaned page as a file. The model gets a preview and the path.</li>
+        <li><code>write_note(path, text)</code> <span class="w-pill">Reversible write</span> In this question's workspace only.</li>
+        <li><code>delegate(question, budget)</code> <span class="w-pill">Read-only</span> Lead only. Starts a researcher whose tools are all read-only. Researchers cannot delegate.</li>
+        <li><code>propose_memory(fact)</code> <span class="w-pill">Reversible write</span> Lead only. Adds to a review queue, not to memory.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>A workspace per question: the plan, sub-questions with status, notes files, the source list with fetch times and content hashes, and the draft. You can reopen a question and extend it.</td></tr>
+            <tr><th scope="row">Memory</th><td>A short profile you control: your background, trusted and distrusted sources, preferred format. Only the lead sees it. Past reports are indexed by topic and retrieved when a new question overlaps. The agent proposes memory changes, and you accept them.</td></tr>
+            <tr><th scope="row">Subagents</th><td>Yes, for breadth. Sub-questions are independent, and reading pages is long and noisy. Each researcher returns at most 500 words with quotes and URLs, and details stay in files. Limits: five researchers, one level deep, a step and token budget each. One author writes the report, so the argument stays coherent.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>On demand. An optional watch mode reruns a saved question monthly and reports only what is new. That part is a scheduled workflow.</td></tr>
+            <tr><th scope="row">When things fail</th><td>A page will not load: skip it and note it. A researcher runs out of budget: it returns partial notes, marked partial. Sources disagree: the report shows both, with citations. The lead may run one extra round on conflicts, then it stops.</td></tr>
+            <tr><th scope="row">Approvals</th><td>None for reading. Memory writes need your acceptance. No tool can spend money or post anything.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>Pages are untrusted. Injected instructions can at worst distort one researcher's notes, because researchers can only read. Any request can also leak data through its URL. So researchers never see your profile. Fetch opens only URLs that came from search results or fetched pages, never URLs the model composes. The lead has no fetch tool.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Budgets, dedupe of sources by URL and hash, the quote check, report formatting, and the memory review queue.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Thirty questions where you know a good answer. Code checks that each cited quote appears in its source. A rubric grades coverage of the key points. An LLM grader can help once its grades agree with yours. Track cost and time per report.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>A single agent with no subagents. Cheaper and simpler, and fine for narrow questions. Start here. Add researchers when traces show the context filling up with page text.</li>
+        <li>A fixed pipeline: search, take the top ten results, summarize. Cheap and predictable, but shallow. Good for news digests, weak for comparisons.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>A claim cites a real source that does not say it. The quote check catches most of these.</li>
+        <li>Memory narrows your view, and "trusted sources" become the only sources. Keep some results from outside the list, and show what was left out.</li>
+        <li>A researcher's summary drops a key caveat. The notes files keep the full text, so the lead can check.</li>
+        <li>A private detail leaks into a search query. The lead's briefs to researchers carry the question, not your profile.</li>
+        <li>Cost runs away with five researchers reading long pages. Set budgets per researcher and per run, and show the spend in the report.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-sales">
+    <h2>Sales agent</h2>
+    <p>A B2B software company gets about 300 demo requests a week. Reps waste hours on poor fits. The company wants an agent that researches each lead and scores its fit against the ideal customer profile. It should write a personal first email and book a call with the right rep. It must respect email consent rules. It must never offer discounts.</p>
+    <ol>
+      <li>Which steps are fixed, and which need judgment?</li>
+      <li>Which tools and data sources does it need?</li>
+      <li>Which messages need a person before they go out?</li>
+      <li>How do you stop it from inventing facts about a prospect?</li>
+      <li>What state lives in the CRM, and what lives in the agent?</li>
+      <li>Which metrics show it is working? Which would fool you?</li>
+    </ol>
+    <label for="ex-sales-notes">Your design</label>
+    <textarea id="ex-sales-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>Mostly a workflow per lead. Code runs enrichment, rules, and booking. The model explains edge-case scores and writes the email. A small agent handles replies. Outbound email is the riskiest action, so it sits behind a gate.</p>
+      <figure>
+<pre class="diagram" aria-label="Sales workflow. A demo request triggers dedupe and consent checks in code, then enrichment. Rules score fit, with the model explaining edge cases. Poor fits get a template. The model drafts an email from verified facts, a rep approves it, and code sends it. A reply agent books calls.">
+<span class="c-tool">Demo request form (event)</span>
+  |
+  v
+<span class="c-runtime">Dedupe, consent, existing customer? (code + CRM)</span>
+  |
+  v
+<span class="c-runtime">Enrich: company data API, website (code)</span>
+  |
+  v
+<span class="c-runtime">Score fit: rules first,</span> <span class="c-model">model explains edge cases</span>
+  |
+  +--> poor fit --> <span class="c-runtime">polite template with resources (code)</span>
+  |
+  v
+<span class="c-model">Draft the first email from verified facts only (model)</span>
+  |
+  v
+<span class="c-human">Rep approves or edits</span> --> <span class="c-tool">send (code)</span> --> <span class="c-state">log in the CRM</span>
+  |
+  v
+<span class="c-tool">Replies</span> --> <span class="c-model">reply agent: answers, offers times, books a call</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>crm_lookup(email)</code> <span class="w-pill">Read-only</span> Dedupe and the existing-customer check.</li>
+        <li><code>enrich_company(domain)</code> <span class="w-pill">Read-only</span> A company data API. Each field keeps its source and date.</li>
+        <li><code>save_draft(lead, text)</code> <span class="w-pill">Reversible write</span> Stored in the CRM.</li>
+        <li><code>send_email(draft_id)</code> <span class="w-pill">External</span> Runs only after approval. Checks consent and the suppression list in code.</li>
+        <li><code>find_slots(rep)</code> <span class="w-pill">Read-only</span> The rep's calendar.</li>
+        <li><code>book_meeting(lead, rep, slot)</code> <span class="w-pill">External</span> No approval needed once the prospect picks a time. Rechecks the slot first.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>All in the CRM: the lead, enrichment fields with source and date, score and reason, draft, approval, sent message ids, replies, meeting. The agent keeps no shadow copy.</td></tr>
+            <tr><th scope="row">Memory</th><td>The ideal customer profile and the messaging guide, as a knowledge package loaded for scoring and drafting. Good past emails, retrieved by industry as examples. Nothing else.</td></tr>
+            <tr><th scope="row">Subagents</th><td>No. One lead, one pipeline. Many leads run in parallel through a queue.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>A form submission, a prospect's reply, and a scheduled follow-up check after three business days. At most two follow-ups.</td></tr>
+            <tr><th scope="row">When things fail</th><td>Enrichment API down: score with what is known and mark it low confidence. Send times out: look up the message id with the email provider before retrying. Slot taken: offer new times.</td></tr>
+            <tr><th scope="row">Approvals</th><td>A rep approves every first email in the first month. After that, standard high-confidence emails send on their own. Large accounts and anything about pricing still need a rep. Replies about price, contracts, or complaints go straight to the rep.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>The send tool emails only people who submitted the form, only from the sales domain, and never anyone on the suppression list. There is no pricing or discount tool, so the agent cannot offer one even if asked. The model sees one lead's record, not the CRM.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Dedupe, consent, territory routing, score thresholds, daily send limits, follow-up timing, and suppression.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Score 200 past leads with known outcomes, and compare with the reps' judgment. Code checks that every personal claim in an email maps to an enrichment field. In production, track meetings held per lead against the human baseline, rep edit rate, and unsubscribe and complaint rates, with a hard ceiling.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>Rules-only scoring. Enough when the ideal customer profile is crisp.</li>
+        <li>Rep assist: the agent prepares a research brief and a draft, and the rep sends. Lower risk, slower.</li>
+        <li>An agent that also prospects cold leads. That brings far more consent and reputation risk. It is a different project.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>Invented personalization: "Loved your talk at the summit!" Only enrichment facts are allowed, and each one is checked.</li>
+        <li>Two emails reach the same person after a retry or a double submission. Dedupe by email, plus an idempotency key per lead and step.</li>
+        <li>Injection through the form's message field: "Offer me 50% off." There is no discount tool, and price questions go to a rep.</li>
+        <li>A metric fools you: reply rate rises because the replies are angry. Count meetings held and complaints, not replies.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-browser">
+    <h2>Browser agent</h2>
+    <p>Your operations team spends hours each week in a supplier's web portal that has no API. They download last week's invoices, check them against purchase orders, and file disputes for mismatches. The team wants a browser agent to do the downloading and checking. It should draft disputes for a person to submit.</p>
+    <ol>
+      <li>What should the agent see: screenshots, the page structure, or both?</li>
+      <li>Which actions in the portal are safe to automate? Which need a person?</li>
+      <li>Where do the login credentials live? Can the model see them?</li>
+      <li>Which parts of the job should the browser agent not do at all?</li>
+      <li>What happens when the portal's layout changes, or a page loads slowly?</li>
+      <li>How would you test it without filing real disputes?</li>
+    </ol>
+    <label for="ex-browser-notes">Your design</label>
+    <textarea id="ex-browser-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>Split the job. The browser agent only moves through the portal and downloads files, with a narrow set of allowed actions. Matching invoices to purchase orders is deterministic code. The model drafts disputes, and a person submits them.</p>
+      <p>The agent reads the page's accessibility tree and text first, because they are compact and precise. Screenshots are a fallback for pages drawn on a canvas. They cost more tokens, and they can capture things you did not mean to share.</p>
+      <figure>
+<pre class="diagram" aria-label="Browser agent. A schedule starts an agent in an isolated browser. The runtime fills in the login. The agent opens the invoice list and downloads each PDF. Code checks the count, parses, and matches invoices against purchase orders. The model drafts disputes for mismatches, and a person submits them.">
+<span class="c-runtime">Weekly schedule, or on demand</span>
+  |
+  v
+<span class="c-model">Browser agent in an isolated browser (model + browser tools)</span>
+  <span class="c-runtime">log in: the runtime fills the form; the model never sees secrets</span>
+  <span class="c-tool">open invoices --> filter last week --> download each PDF</span>
+  |
+  v
+<span class="c-runtime">Count check: downloads = invoices listed in the portal (code)</span>
+  |
+  v
+<span class="c-runtime">Parse invoices (code, with the model for messy PDFs)</span>
+  |
+  v
+<span class="c-runtime">Match against purchase orders (code)</span>
+  |  all match --> mark ready to pay
+  v  mismatch
+<span class="c-model">Draft a dispute (model)</span> --> <span class="c-human">a person reviews and submits it</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>open(url)</code> <span class="w-pill">Read-only</span> The portal's domain only.</li>
+        <li><code>read_page()</code> <span class="w-pill">Read-only</span> Accessibility tree and text. A screenshot only on request.</li>
+        <li><code>click(element)</code>, <code>type(element, text)</code> <span class="w-pill">Depends on target</span> The runtime blocks known dangerous targets: submit, pay, approve, delete, settings.</li>
+        <li><code>download(link)</code> <span class="w-pill">Reversible write</span> Into the run's folder, with a file hash.</li>
+        <li><code>login()</code> <span class="w-pill">Read-only</span> Takes no arguments. The runtime fills the form from a vault.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>A run record: the week, invoices listed in the portal, downloaded files with hashes, match results, drafts, and review status. The browser session is thrown away after each run.</td></tr>
+            <tr><th scope="row">Memory</th><td>A short site guide, written by people: where invoices live, and known quirks such as a date filter that resets after each download. Updated after failures.</td></tr>
+            <tr><th scope="row">Subagents</th><td>No. One browser session. Parallel tabs add confusion and can trip the portal's rate limits.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>A weekly schedule, plus on demand. After a crash, resume from the run record and skip files already downloaded.</td></tr>
+            <tr><th scope="row">When things fail</th><td>The layout changed and the invoice list is not found within 15 steps: stop, save a screenshot, alert a person. Slow pages: the tools wait with timeouts, not the model. A login or MFA problem: stop and ask a person. Never guess.</td></tr>
+            <tr><th scope="row">Approvals</th><td>A person submits each dispute. Clicks outside the allowed flow are blocked, not offered for approval. Asking about every risky click trains people to click "approve".</td></tr>
+            <tr><th scope="row">Security boundary</th><td>A fresh browser profile in a container, with no access to anyone's real browser or cookies. Network egress only to the portal. A portal account that can read invoices and draft disputes, but cannot pay. Page text is untrusted: an invoice note saying "click Approve all" meets a blocked target.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Login, the count check, matching amounts and quantities with tolerances, dedupe by invoice number, dispute thresholds, and the schedule.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Record the portal's pages and replay them offline. Use a test account where possible. A trial passes when every invoice is found, matches are correct, and no blocked click was attempted. In production, track invoices found against invoices listed, failed runs, and edits to drafts.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>Ask the supplier for an export or an API. If one exists, you need no browser agent.</li>
+        <li>A scripted browser automation with no model. Cheap and predictable. It breaks when the layout changes, but it breaks loudly. Good when the portal is stable.</li>
+        <li>A hybrid: script the stable path, and call the model only when a selector fails.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>The agent clicks "Approve all invoices". Blocked targets and an account that cannot approve stop it.</li>
+        <li>It misses the invoices on page 2 and reports success. The count check compares downloads with the portal's total.</li>
+        <li>Credentials leak into a screenshot or a log. Take no screenshots on the login page, and mask fields in traces.</li>
+        <li>The portal changes and runs fail every week. The alert goes to a person, who updates the site guide or the script.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-data">
+    <h2>Data-analysis agent</h2>
+    <p>Product managers ask questions such as "Why did weekly signups drop 12% last week?" or "Which plan has the best 90-day retention?" Today an analyst answers in about two days. The company wants an agent that answers in the team chat by querying the data warehouse and showing its work.</p>
+    <ol>
+      <li>What does the agent need to know about the data before it writes a query?</li>
+      <li>Which tools does it need? Can any of them change data?</li>
+      <li>How does a product manager know whether to trust an answer?</li>
+      <li>What should be deterministic: metric definitions, queries, numbers, charts?</li>
+      <li>When should it refuse, or hand off to an analyst?</li>
+      <li>How would you evaluate it?</li>
+    </ol>
+    <label for="ex-data-notes">Your design</label>
+    <textarea id="ex-data-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>An agent loop earns its place here, because the next query depends on the last result. But it runs read-only, against approved metric definitions. Every number in the answer comes from a query that ran, and the answer shows that query.</p>
+      <figure>
+<pre class="diagram" aria-label="Data-analysis agent. A question starts an agent loop with read-only tools. It finds metric definitions, writes SQL, runs it on a replica, inspects results, and queries again. Code builds the answer, copying numbers from results and attaching SQL and freshness, then replies in the thread.">
+<span class="c-human">Question in the team chat</span>
+  |
+  v
+<span class="c-model">Agent loop (model + read-only tools, 20 steps, cost cap)</span>
+  <span class="c-tool">find metric definitions --> write SQL --> run on a replica</span>
+  <span class="c-tool">--> inspect the result --> next query: segment, compare, check</span>
+  |
+  v
+<span class="c-runtime">Answer builder (code): numbers copied from query results,</span>
+<span class="c-runtime">  SQL and data freshness attached, chart rendered</span>
+  |
+  v
+<span class="c-tool">Reply in the thread, labeled "approved metric" or "exploratory"</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>search_catalog(term)</code> <span class="w-pill">Read-only</span> Tables, columns, owners, and known data issues.</li>
+        <li><code>get_metric(name)</code> <span class="w-pill">Read-only</span> The approved definition from the metrics layer.</li>
+        <li><code>run_sql(query)</code> <span class="w-pill">Read-only</span> A read-only role on a replica. Row, time, and cost limits are checked before it runs.</li>
+        <li><code>make_chart(result_id, spec)</code> <span class="w-pill">Read-only</span> Renders from a stored result.</li>
+        <li><code>post_answer(thread, answer)</code> <span class="w-pill">External</span> Called once, by code, at the end.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>Per question: the thread, every query with its SQL, result id, row count, and data freshness, the findings so far, and the answer. Results are stored as artifacts. The model sees aggregates and a few sample rows, not full tables.</td></tr>
+            <tr><th scope="row">Memory</th><td>The metrics layer and the data catalog are the memory that matters: definitions, join paths, and known quirks such as "signups before March 3 double-count SSO users". Past answers and their SQL are retrieved for similar questions. Analysts mark good ones as verified examples.</td></tr>
+            <tr><th scope="row">Subagents</th><td>Usually no. Data questions are sequential. One exception: a separate checker re-derives the headline number from scratch, without seeing the first answer.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>A question in chat. A weekly metrics digest would be a workflow with fixed queries, not this agent.</td></tr>
+            <tr><th scope="row">When things fail</th><td>A SQL error goes back to the model, with a retry limit. A query over the cost limit is refused, with a narrower question suggested. Late data is reported with its freshness time. An empty result means "no data", never a guess. A question that needs a metric with no approved definition gets an "exploratory" label, or goes to an analyst.</td></tr>
+            <tr><th scope="row">Approvals</th><td>None for reads within limits. Queries over the cost cap need an analyst. There are no write tools.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>Queries run with the asking user's data permissions. The agent cannot show anyone data they could not query themselves. Personal data columns are masked. Free-text columns are untrusted input.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Metric definitions, access control, cost limits, running SQL, and the numbers in the answer. Code copies them from results. The model never retypes a number.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>One hundred questions with analyst-verified answers. Grade the number (within a tolerance), the method (right metric, right filters), and honesty (uncertainty stated, exploratory work labeled). In production, analysts spot-check one answer in ten.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>One-shot text-to-SQL with no loop. Fine for lookups such as "signups last week". Weak on "why" questions.</li>
+        <li>Dashboards with fixed queries. Better for recurring metrics. The agent should link to them when they exist.</li>
+        <li>An analyst approves each answer before it posts. Slower, and much safer at first.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>A join double-counts and produces a plausible wrong number. Approved metrics, row-count sanity checks, and the independent re-derivation all help.</li>
+        <li>A correlation becomes a causal claim: "Signups dropped because of the pricing change." Answers must separate observed facts from hypotheses.</li>
+        <li>Data reaches someone who may not see it. Queries run with the asker's permissions.</li>
+        <li>The model mistypes a number while writing. Code inserts numbers from results.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-debugging">
+    <h2>Autonomous debugging agent</h2>
+    <p>Your on-call engineers get paged about 30 times a week. Many pages repeat: a full disk, a stuck queue, a bad deploy. The team wants an agent that starts investigating the moment an alert fires. It reads logs, metrics, traces, and recent deploys. It forms hypotheses and posts findings in the incident channel. It may also apply a few known fixes.</p>
+    <ol>
+      <li>What may the agent do on its own? What needs a person?</li>
+      <li>How does it keep track of hypotheses and evidence?</li>
+      <li>Which tools does it need, and what is each one's effect class?</li>
+      <li>How do you stop it from making an incident worse?</li>
+      <li>How does a run end? What counts as "root cause found"?</li>
+      <li>How would you evaluate it before it touches production?</li>
+    </ol>
+    <label for="ex-debugging-notes">Your design</label>
+    <textarea id="ex-debugging-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>An event-triggered agent that is read-only by default. It investigates in a loop and keeps an explicit hypothesis board in state. Fixes come from a short list of runbook actions. Each one needs approval and gets checked automatically afterward. A cause counts as found only when it explains the symptom and when it started, and a check confirms it, such as errors dropping after a rollback.</p>
+      <figure>
+<pre class="diagram" aria-label="Debugging agent. An alert triggers code that gathers context. A read-only investigation loop keeps a hypothesis board with evidence counts and posts findings every five minutes. It proposes a runbook action. On-call approves, a separate executor runs it, and code checks that errors recover.">
+<span class="c-tool">Alert fires (event)</span>
+  |
+  v
+<span class="c-runtime">Gather context (code): deploys, owners, runbook, similar incidents</span>
+  |
+  v
+<span class="c-model">Investigation loop (model + read-only tools, 15 minutes max)</span>
+  <span class="c-state">hypotheses:  H1 bad deploy 4512   3 for, 0 against</span>
+  <span class="c-state">             H2 database load     0 for, 2 against</span>
+  |
+  v
+<span class="c-tool">Post findings to the incident channel every 5 minutes</span>
+  |
+  v
+<span class="c-model">Propose a runbook action: "roll back deploy 4512" (model)</span>
+  |
+  v
+<span class="c-human">On-call approves</span> --> <span class="c-tool">executor runs it</span> --> <span class="c-runtime">check errors recover (code)</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>query_logs</code>, <code>query_metrics</code>, <code>get_traces</code> <span class="w-pill">Read-only</span> Results are capped. Large outputs are saved as files with a preview.</li>
+        <li><code>list_deploys(service, since)</code> <span class="w-pill">Read-only</span> From the deploy system.</li>
+        <li><code>search_incidents(symptom)</code> <span class="w-pill">Read-only</span> Past incidents and postmortems.</li>
+        <li><code>update_board(hypotheses)</code> <span class="w-pill">Reversible write</span> The hypothesis board in the incident record.</li>
+        <li><code>post_update(text)</code> <span class="w-pill">External</span> An internal channel, so low risk.</li>
+        <li><code>propose_action(action, params)</code> <span class="w-pill">External</span> Runs only after approval, and only for allowlisted actions: roll back the last deploy, restart a service, add queue workers, clear temp files. A separate executor runs them.</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>Per incident: the alert, a timeline of findings, the board, actions proposed and taken, and status. Each hypothesis lists evidence for and against, linked to the queries that produced it. It all lives in the incident record, so people and the agent share one view.</td></tr>
+            <tr><th scope="row">Memory</th><td>Past incidents and postmortems, retrieved by service and symptom. Runbooks as skills, each with preconditions and a check that proves it worked. Owners and dependencies come from the service catalog at use time.</td></tr>
+            <tr><th scope="row">Subagents</th><td>Maybe. When an incident spans services, parallel helpers can gather evidence and each return a short summary. The lead keeps the board. Start without them. Add them when traces show the lead's context drowning in logs.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>The alert webhook. One investigation per incident, not per alert, because alerts arrive in storms. A run ends when a person takes over, the incident resolves, or 15 minutes pass.</td></tr>
+            <tr><th scope="row">When things fail</th><td>Monitoring itself is down: say so and stop. A query times out: retry once, then record the gap. Evidence conflicts: keep both hypotheses open. Never name a root cause that does not explain when the symptom started.</td></tr>
+            <tr><th scope="row">Approvals</th><td>Every runbook action. The request shows the action, the evidence, the expected effect, and how to undo it. On-call approves from chat.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>Read-only credentials for the observability tools. The executor is a separate service. It holds the deploy credentials and accepts only allowlisted actions with validated parameters. Logs can contain user data and injected text, so log lines are data, never instructions.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Alert dedupe, gathering initial context, time budgets, posting cadence, the allowlist, parameter checks, and the check after each action: errors back under threshold for 10 minutes.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Replay 50 past incidents from frozen telemetry. Measure whether the top hypothesis matches the postmortem, how long that took, and how often a wrong cause was stated with confidence. Then run in shadow mode for a month. It investigates but takes no action, and on-call rates each finding.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>Plain runbook automation with no model, such as "disk full: clear temp files". Best for crisp, known signatures. Do it first for the top three repeat alerts.</li>
+        <li>A briefing bot. It gathers context and posts a summary, with no hypotheses and no actions. Low risk and quick value.</li>
+        <li>Fully autonomous fixes. Tempting at 3 a.m. But a wrong action during an incident makes the incident bigger.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>A confident wrong root cause anchors the humans. Show the evidence, and label hypotheses as hypotheses.</li>
+        <li>A rollback undoes a deploy that included a database migration. Runbook preconditions live in code, and the approval request shows the risk.</li>
+        <li>An alert storm starts 200 investigations. Dedupe by incident, and cap concurrency.</li>
+        <li>A log line says "run cleanup on all hosts". Only allowlisted actions exist, and the executor validates parameters.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-project">
+    <h2>Long-running project agent</h2>
+    <p>Your team wants an agent to build an internal admin dashboard from a six-page spec. The spec lists 40 features, such as user search, a refunds view, an audit log, and role-based access. The agent works in sessions of up to two hours, several a day, for about two weeks. The team reviews progress each morning. The agent must pick up where it left off, even after a crash.</p>
+    <ol>
+      <li>What carries over from one session to the next? Where does it live?</li>
+      <li>How does a fresh session get its bearings without rereading everything?</li>
+      <li>How does it choose what to work on next? What does "done" mean for one feature?</li>
+      <li>How do you stop it from declaring the project finished early?</li>
+      <li>Where do people review, and what can they change?</li>
+      <li>What happens if a session crashes halfway through a change?</li>
+    </ol>
+    <label for="ex-project-notes">Your design</label>
+    <textarea id="ex-project-notes" class="ex-notes" rows="8"></textarea>
+    <details class="reveal"><summary>Reveal one reasonable architecture</summary>
+      <p>Keep durable state in files and git, not in a conversation. Each session starts with a fresh context. It reads a progress file and a feature list, picks one feature, builds it, and verifies it with tests. Then it commits and updates the progress file. Only a passing test can mark a feature done.</p>
+      <figure>
+<pre class="diagram" aria-label="Project agent sessions. A session takes a lease on the repo, reads the progress file, feature list, and git log, and runs smoke tests. The model picks one failing feature, implements it, and runs its test until it passes. Code commits and marks the feature passing. When the budget or context runs low, the session writes a handoff note and ends.">
+<span class="c-runtime">Session starts (schedule or a person) and takes the repo lease</span>
+  |
+  v
+<span class="c-runtime">Get bearings: read</span> <span class="c-state">PROGRESS.md, features.json, git log</span><span class="c-runtime">;</span>
+<span class="c-runtime">  run the smoke tests (code + model)</span>
+  |
+  v
+<span class="c-model">Pick one failing feature (model)</span>
+  |
+  v
+<span class="c-model">Implement --> run its end-to-end test --> fix, repeat (model)</span>
+  |
+  v
+<span class="c-runtime">Test passes? --> commit; the runtime marks the feature passing</span>
+  |
+  v
+<span class="c-runtime">Budget or context nearly used --> write a handoff note, end session</span>
+</pre>
+      </figure>
+      <h4>Tools</h4>
+      <ul>
+        <li><code>search_files</code>, <code>read_file</code> <span class="w-pill">Read-only</span> The repo.</li>
+        <li><code>edit_file</code> <span class="w-pill">Reversible write</span> Git can undo it.</li>
+        <li><code>run_command</code> <span class="w-pill">Depends on command</span> Runs only in the sandbox, so its effects stay there. Used for tests, the dev server, and the local database.</li>
+        <li><code>run_feature_test(id)</code> <span class="w-pill">Read-only</span> Runs one feature's end-to-end test against the local app.</li>
+        <li><code>commit(message)</code> <span class="w-pill">Reversible write</span> Local only. Allowed only when the feature's test passes.</li>
+        <li><code>ask_team(question)</code> <span class="w-pill">External</span> Posts a question to the team. The agent moves to another feature while it waits.</li>
+      </ul>
+      <p>No tool marks a feature done. The runtime flips a feature's status after its test passes.</p>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Design decisions</caption>
+          <thead><tr><th scope="col">Decision</th><th scope="col">This design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Persistent state</th><td>In the repo: <code>features.json</code> (each feature's test and status, written only by the runtime), <code>PROGRESS.md</code> (done, next, open questions, decisions), and git history as the checkpoint log. The runtime adds the session id, budget used, and the current feature.</td></tr>
+            <tr><th scope="row">Memory</th><td>A project instructions file: stack, commands, conventions, and team decisions such as "use the existing design system". Changes to it appear in the morning review, where people keep or revert them.</td></tr>
+            <tr><th scope="row">Subagents</th><td>A narrow yes. A reviewer with read-only tools checks each feature's diff against the spec before commit. An explorer handles large code searches. Only one agent writes code, which avoids conflicting edits.</td></tr>
+            <tr><th scope="row">Triggers and scheduling</th><td>Scheduled sessions every few hours during the day, plus sessions a person starts. A lease on the repo stops two sessions from running at once.</td></tr>
+            <tr><th scope="row">When things fail</th><td>A crash mid-change: discard uncommitted work and restart the feature from the last commit. A feature that fails in three sessions is marked blocked and raised to a person. Flaky tests get one rerun.</td></tr>
+            <tr><th scope="row">Approvals</th><td>Merging to main happens in the morning review. Only people change the spec, the feature list, or the acceptance tests. New dependencies need approval.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>A container with the repo and a local database of fake data. Egress to the package registry only. No production data or credentials. The acceptance tests and <code>features.json</code> are mounted read-only, so the agent cannot change what counts as done. The push token can push only the agent's branch.</td></tr>
+            <tr><th scope="row">Deterministic parts</th><td>Scheduling, the lease, the bootstrap steps, marking features passing from test results, commit rules, budgets, and the morning summary.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>Per feature: its test passes and the reviewer accepts. Per project: features passing over time, regressions, human rework time, and cost per feature. Before the real run, try a five-feature spec where you know the right result.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Alternatives</h4>
+      <ul>
+        <li>One endless conversation with compaction. Simpler, but each compaction can drop a decision, and a crash loses the thread.</li>
+        <li>A planner that turns features into issues for parallel workers. Faster when features are truly independent. When they touch the same files, you get merge conflicts.</li>
+        <li>People write the feature list and the tests, and the agent only implements. The most reliable split of the work.</li>
+      </ul>
+      <h4>What could go wrong</h4>
+      <ul>
+        <li>The agent declares victory with ten features still failing. Only tests change a feature's status. The run ends only when every feature passes or the budget runs out.</li>
+        <li>A new feature breaks an old one. Run every passing feature's test before each commit, or nightly if they are slow.</li>
+        <li>The progress file says done, but the code disagrees. Tests and git are the source of truth. The progress file is only a summary.</li>
+        <li>The agent edits an acceptance test so that it passes. The read-only mount makes that impossible.</li>
+      </ul>
+    </details>
+  </article>
+
+  <article class="exercise" id="ex-final">
+    <h2>Final scenario: migrate 300 repositories</h2>
+    <p>This scenario does not match any chapter. That is the point. Your company is replacing an old logging library with a new one across 300 repositories owned by 40 teams. They use three languages, and some have unusual build setups. The new library has a different API. Log levels have new names, structured fields replace format strings, and the configuration file moves. The goal is a reviewed pull request in every repo within six weeks. CI must be green, and the log lines that alerts depend on must not change.</p>
+    <ol>
+      <li>How much of this is deterministic? Where does a model earn its place?</li>
+      <li>What is the unit of work, and what state does each unit need?</li>
+      <li>How do you avoid duplicate pull requests when jobs retry?</li>
+      <li>What is the security boundary for building 300 repos you do not own?</li>
+      <li>What counts as done for one repo? For the whole migration?</li>
+      <li>Where do people approve, and how do you avoid swamping 40 teams?</li>
+      <li>How do you test the approach before running it on all 300?</li>
+    </ol>
+    <label for="ex-final-notes">Your design</label>
+    <textarea id="ex-final-notes" class="ex-notes" rows="10"></textarea>
+    <details class="reveal"><summary>Reveal the rubric for this scenario</summary>
+      <p>There is no single answer here. Grade your design with the table below, then with the general rubric after it. Many strong designs share one shape. A deterministic orchestrator works through a queue of repos. A codemod does the mechanical rewrite. An agent loop handles only what the codemod could not. Other shapes can score well if you argue their tradeoffs.</p>
+      <figure>
+<pre class="diagram" aria-label="One strong shape. A job queue holds one idempotent job per repo. Each job runs a codemod in a fresh sandbox, then builds and tests. Green jobs open or update a pull request. Red jobs go to an agent loop that fixes the rest, then either open a pull request or produce a report for a person.">
+<span class="c-runtime">300 repos --> job queue, one job per repo (key: repo + migration id)</span>
+  |
+  v
+<span class="c-runtime">Per repo, in a fresh sandbox:</span>
+  <span class="c-runtime">codemod (code)</span> --> <span class="c-tool">build + tests</span> --> green? --> <span class="c-tool">open or update PR</span>
+       |
+       v  red, or call sites the codemod skipped
+  <span class="c-model">agent loop fixes the rest (model, 40 steps)</span>
+       |
+       v
+  green and checks pass? --> <span class="c-tool">PR</span>   otherwise --> <span class="c-human">"needs a human" report</span>
+</pre>
+      </figure>
+      <div class="table-wrap">
+        <table class="compare">
+          <caption>Rubric for the migration</caption>
+          <thead><tr><th scope="col">Area</th><th scope="col">A strong design</th><th scope="col">A weak design</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Model vs code</th><td>A codemod does the bulk, and the agent fixes the residue. A pilot measures how much each part handles.</td><td>An agent rewrites every repo from scratch.</td></tr>
+            <tr><th scope="row">Unit of work and state</th><td>One job per repo, with status, branch, pull request link, attempts, and last commit. Stored outside any context.</td><td>One long conversation that "remembers" which repos are done.</td></tr>
+            <tr><th scope="row">Idempotency</th><td>A fixed branch name per repo. Look up an existing pull request before opening one. A rerun updates it.</td><td>A retry opens a second pull request.</td></tr>
+            <tr><th scope="row">Security boundary</th><td>A fresh container per repo. Build scripts are untrusted code. No production secrets. A token that can open pull requests, but not merge or push to main.</td><td>One long-lived machine with an org-wide admin token.</td></tr>
+            <tr><th scope="row">Done criteria</th><td>CI green, no imports of the old library left, alert-critical log lines unchanged in a golden test, and the owners merged it.</td><td>"The agent said done", or "a pull request exists".</td></tr>
+            <tr><th scope="row">Human load</th><td>Batches of about 20 a week. Pull request descriptions that say how the change was verified. A way for teams to schedule or opt out.</td><td>300 pull requests on the first day.</td></tr>
+            <tr><th scope="row">Failure handling</th><td>A budget per repo. A failed repo gets a report, not a half-migrated branch. Backoff on Git host and CI rate limits. A kill switch.</td><td>Unbounded retries and partial pull requests.</td></tr>
+            <tr><th scope="row">Context policy</th><td>One repo at a time: the migration guide as a skill, the codemod's list of skipped call sites, and build errors. Long logs saved as files.</td><td>A whole repo, or every repo's history, in one context.</td></tr>
+            <tr><th scope="row">Evaluation</th><td>A pilot on 10 varied repos with known human migrations. Measure codemod coverage, agent fix rate, false greens, and reviewer edits. Decide go or no-go before scaling.</td><td>Run it on all 300 and see.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Traps in this scenario</h4>
+      <ul>
+        <li>A changed log format breaks alerts without any error. Find the log lines that alerts and dashboards query, and test them first.</li>
+        <li>Structured fields can log whole objects, including personal data that the old format string left out. Check what each new field contains.</li>
+        <li>Some repos call the logger through wrappers or helper functions. The codemod skips them, and a search for imports misses them.</li>
+        <li>Green CI is weak evidence in a repo with few tests. Spend more review effort where coverage is low.</li>
+        <li>Forty teams means forty review habits. A pull request that explains itself gets merged. A mystery pull request gets closed.</li>
+      </ul>
+    </details>
+  </article>
+
+  <section id="rubric">
+    <h2>Grade your own design</h2>
+    <p>Use this rubric for every exercise on this page, and for real designs too. It checks two things. Did you justify your tradeoffs? And did you state the operational invariants: the rules that must hold in every run, whatever the model does?</p>
+    <p>Score each row 0, 1, or 2. Zero means missing. One means present but vague. Two means specific, with a reason.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Design rubric</caption>
+        <thead><tr><th scope="col">Criterion</th><th scope="col">Scores 2</th><th scope="col">Red flag</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Shape</th><td>Says which steps the model decides, and why. Uses the least agentic design that works.</td><td>"It's an agent", with no reason. A loop around steps that never vary.</td></tr>
+          <tr><th scope="row">Security boundary</th><td>Names what the process can touch at all: files, network, credentials. Says what enforces each limit and what it does not stop.</td><td>"The prompt tells it not to."</td></tr>
+          <tr><th scope="row">Approval points</th><td>Names each gated action, the approver, what they see, and what a rejection does. The approval is bound to the exact action.</td><td>"A human reviews it", with no trigger. Or approvals on everything.</td></tr>
+          <tr><th scope="row">Done criteria</th><td>Observable checks that code runs, separate from the model's claim.</td><td>"When the agent says it's done."</td></tr>
+          <tr><th scope="row">Failure and idempotency</th><td>For each external effect: what happens on a timeout, a retry, and a crash. Keys or reconciliation. Budgets that end every run.</td><td>Retries with no keys. No plan for partial failure.</td></tr>
+          <tr><th scope="row">Context policy</th><td>What the model sees in each call. What stays out: secrets, other users' data, raw logs. How long runs fit the window.</td><td>"Give it everything."</td></tr>
+          <tr><th scope="row">State and memory</th><td>Where each piece of state lives, and which copy is the truth. What is remembered, and who may write it.</td><td>State only in the conversation. Memory anyone can write.</td></tr>
+          <tr><th scope="row">Evaluation plan</th><td>Cases with known answers. A successful trial includes policy compliance. Several trials per case, and production metrics.</td><td>"We'll see if users like it."</td></tr>
+          <tr><th scope="row">Tradeoffs</th><td>At least one rejected alternative, and why. The main risk you accept.</td><td>No alternatives. No downsides.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The zeros matter more than the total. A zero on the security boundary, the approvals, or the done criteria means the design is not ready to hand to an AI coding system. Fix those first.</p>
+    <p>Now grade the reveals on this page. They are not perfect. Find a row where one of them scores only 1, and write the fix.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>This rubric is a production readiness review for agents. Like any readiness review, it asks about boundaries, failure, and monitoring before launch.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a readiness review assumes components that behave the same way every time. Here one component may choose differently on every run. So each invariant must hold whatever the model chooses, and only code and the environment can promise that.</p>
+    </aside>
+    <h3>Invariants worth testing</h3>
+    <p>The best designs state invariants you can test. These came up in almost every scenario above. <a href="21-design-brief.html#acceptance">Chapter 21</a> shows how to make an AI coding system prove them, and <a href="19-what-you-design.html">chapter 19</a> shows how to review code against them.</p>
+    <ul>
+      <li>A rejected action never executes.</li>
+      <li>An approved action runs exactly as approved.</li>
+      <li>Every external effect has an idempotency key or a reconciliation step.</li>
+      <li>The model never sees a credential.</li>
+      <li>"Done" requires evidence that code checked.</li>
+      <li>Every run ends, on success, a budget, an error rule, or a person's stop.</li>
+      <li>State is saved before each side effect.</li>
+    </ul>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Most of these designs are workflows with one or two agentic steps. Agency goes where the next step depends on what the agent finds.</li>
+      <li>The model proposes. Code holds the side effects and the credentials.</li>
+      <li>Every external effect needs a gate, an idempotency key, or a reconciliation step.</li>
+      <li>"Done" means evidence that code checked, not a claim.</li>
+      <li>Evaluate on replayed real cases, several trials each, before anything goes live.</li>
+      <li>A design is ready to build when its boundary, approvals, and done criteria are specific.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

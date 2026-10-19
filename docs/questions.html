@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The 31 questions · How AI Agents Work</title>
+<meta name="description" content="The 31 questions this course should let you answer, each with a model answer and a link to the chapter that teaches it.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Reference</p>
+    <h1>The 31 questions</h1>
+    <p class="lede">These are the questions the course set out to make easy. Answer each one out loud before you open the model answer.</p>
+    <p>Tick the ones you can answer without looking. You can answer <strong id="can-answer-count">0 of 31</strong> so far. Ticks are saved in this browser only.</p>
+  </header>
+
+  <section id="foundations">
+    <h2>Foundations</h2>
+
+    <article class="q-item" id="q1">
+      <h3>1. What technically makes something an agent?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>A runtime loop in which the model chooses the next action. The runtime executes that action, feeds the result back as context, and repeats until a stop rule fires. A single model call has no loop and no actions. A workflow has steps, but code chooses every one of them. In an agent, the model chooses the steps, inside limits the runtime enforces.</p>
+        <p>Read more: <a href="00-llm-vs-agent.html#spectrum">Chapter 0, from a single call to an agent</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q1"><label for="can-q1">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q2">
+      <h3>2. What is the agent loop?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Build a context from state. Call the model. If it requested tools, validate and execute them. Append the results to state. Repeat. The loop stops on a final answer, a budget, an error rule, or a person. Then something verifies success with evidence.</p>
+        <p>Read more: <a href="01-agent-loop.html#observe-decide-act">Chapter 1, observe, decide, act, repeat</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q2"><label for="can-q2">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q3">
+      <h3>3. Where does agency live?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>In the runtime. It has the loop that keeps going, the tools wired to real systems, the permission to use them, the state that persists, and the authority to stop. The model contributes the choice of action. The same model behind a different runtime is a different agent.</p>
+        <p>Read more: <a href="00-llm-vs-agent.html#intelligence-vs-agency">Chapter 0, where intelligence lives and where agency lives</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q3"><label for="can-q3">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q4">
+      <h3>4. What does the model know at any moment?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>What it learned in training, frozen at a cutoff, plus the context of the current call. Nothing else. Stored history, memory, files, and provider-side conversations only matter once something puts them into a call's context.</p>
+        <p>Read more: <a href="00-llm-vs-agent.html#llm">Chapter 0, the model is a function</a> and <a href="04-context.html#only-context">Chapter 4</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q4"><label for="can-q4">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q5">
+      <h3>5. What is context?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>The exact input to one model call. It holds instructions, tool definitions, conversation, tool results, retrieved memory, and files. The runtime rebuilds it for every call as a selected view of its state, under a token budget.</p>
+        <p>Read more: <a href="04-context.html#anatomy">Chapter 4, the anatomy of a context</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q5"><label for="can-q5">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q6">
+      <h3>6. What is state?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Everything the system tracks to do its work. That includes the conversation, runtime variables such as the step count, plan, approvals, and budgets, and the outside world it acts on. It also includes whatever is saved so work can resume. State lives in the runtime and its stores. Context is a chosen view of it.</p>
+        <p>Read more: <a href="03-state.html#runtime-state">Chapter 3, runtime state</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q6"><label for="can-q6">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q7">
+      <h3>7. What is memory?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Information kept beyond the current context to guide future behavior. It reduces to storage, a write policy, retrieval, and injection into context. The common kinds are working, conversation, structured, semantic, episodic, and procedural memory. It is not the model remembering.</p>
+        <p>Read more: <a href="05-memory.html#not-magic">Chapter 5, memory is not magic</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q7"><label for="can-q7">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q8">
+      <h3>8. How are state and memory different?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>By purpose, lifecycle, and reuse. State serves the current run: what is true now and what is pending. Memory is curated for future runs: facts, lessons, and procedures. They overlap. Saved state can be read back as memory, and memory is itself stored state.</p>
+        <p>Read more: <a href="05-memory.html#state-vs-memory">Chapter 5, state vs memory</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q8"><label for="can-q8">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q9">
+      <h3>9. How do tools actually work?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>The runtime lists tools in the context: a name, a description, and an input schema for each. The model emits a structured request with arguments and a call id. The runtime validates the request against the schema and its policy. Then it runs the implementation and returns the result or the error as a message tied to that call id. The model never runs anything.</p>
+        <p>Read more: <a href="02-tools.html#flow">Chapter 2, the full flow of a tool call</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q9"><label for="can-q9">I can answer this</label></div>
+    </article>
+  </section>
+
+  <section id="capabilities">
+    <h2>Capabilities</h2>
+
+    <article class="q-item" id="q10">
+      <h3>10. What is planning mechanically?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Generating and maintaining an explicit list of intended future actions. It can be text in the conversation, a todo structure in runtime state that is shown to the model, or the output of a separate planner call that an executor follows. Replanning updates it when an assumption fails.</p>
+        <p>Read more: <a href="06-planning.html#what-planning-means">Chapter 6, what planning means</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q10"><label for="can-q10">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q11">
+      <h3>11. What is reflection mechanically?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Another model call that looks at earlier state or output, such as a draft, a diff, or a trace, and proposes changes. It works best with an outside signal like test results. Without one, it can repeat the same mistake. It always costs extra calls.</p>
+        <p>Read more: <a href="06-planning.html#reflection">Chapter 6, reflection</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q11"><label for="can-q11">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q12">
+      <h3>12. What is a subagent?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Another agent loop that a parent starts, usually through a delegate tool. It has its own context, and often its own prompt, tools, model, permissions, and budget. It returns a result, usually a short one, as a tool result to the parent.</p>
+        <p>Read more: <a href="07-subagents.html#first-principles">Chapter 7, subagents from first principles</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q12"><label for="can-q12">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q13">
+      <h3>13. Why use multiple agents?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>To keep noisy exploration out of the main context. To run independent subtasks in parallel. To give each role a focused prompt and a narrow set of tools. To use different permissions or different models per role.</p>
+        <p>Read more: <a href="07-subagents.html#when-useful">Chapter 7, when multiple agents help</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q13"><label for="can-q13">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q14">
+      <h3>14. When should I avoid multiple agents?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>When the work is tightly coupled and needs shared decisions. When the parent needs details that a summary would drop. When the task is small. When cost and latency matter more than breadth. More agents mean more tokens and new ways to fail, such as conflicting results.</p>
+        <p>Read more: <a href="07-subagents.html#when-not">Chapter 7, when they are unnecessary</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q14"><label for="can-q14">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q15">
+      <h3>15. What is a skill?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>A reusable package the agent selects at runtime. Depending on the system, it is reusable instructions, a tool bundle, a workflow, a script, a knowledge package, or a learned procedure. A common format is a folder with a SKILL.md file. A short description is always in context, and the body loads only when relevant. Bundled files are read or run when needed.</p>
+        <p>Read more: <a href="08-skills.html#reduces-to">Chapter 8, what a skill reduces to</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q15"><label for="can-q15">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q16">
+      <h3>16. How do coding agents work?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>A capable model runs the basic loop with a few primitives: search, read, edit, and run commands and tests. The environment gives fast, exact feedback from compilers and tests. State lives in files under git, so changes are visible and reversible. Success can be checked. Try, test, and revise behavior emerges from that loop.</p>
+        <p>Read more: <a href="09-coding-agents.html#why-coding">Chapter 9, why coding fits</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q16"><label for="can-q16">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q17">
+      <h3>17. Why does context management matter?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>The model uses only what is in its context. The window is finite. Cost and latency grow with context size. Irrelevant or stale content makes decisions worse. Most capabilities, such as memory, skills, plans, and subagent results, work by changing what is in the context.</p>
+        <p>Read more: <a href="04-context.html#why-central">Chapter 4, why context engineering is central</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q17"><label for="can-q17">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q18">
+      <h3>18. What happens when context gets too large?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Calls get slower and cost more. Quality can drop as relevant details get buried. Eventually the request exceeds the window and fails. Agents respond in a few ways. They trim or offload big tool outputs, compact history into summaries, retrieve just in time, or move work into subagents. Compaction can lose constraints if the summary is careless.</p>
+        <p>Read more: <a href="04-context.html#compaction">Chapter 4, compaction</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q18"><label for="can-q18">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q19">
+      <h3>19. How does retrieval work?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>The runtime turns a need into a query plus filters. Keyword or vector search returns candidates. The runtime selects or reranks them under a token budget, checks where they came from and how fresh they are, and puts the survivors into the context. Similarity is not relevance, and relevance is not correctness.</p>
+        <p>Read more: <a href="05-memory.html#retrieval-trace">Chapter 5, a retrieval trace</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q19"><label for="can-q19">I can answer this</label></div>
+    </article>
+  </section>
+
+  <section id="systems">
+    <h2>Systems and safety</h2>
+
+    <article class="q-item" id="q20">
+      <h3>20. How does an agent resume after failure?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>From saved state. The runtime writes a checkpoint after each step, holding the history, plan, step, and pending actions. On restart it reloads the last checkpoint. It reuses recorded results instead of calling the model again. It handles side effects that were in flight through idempotency keys, or by asking the receiver what actually happened.</p>
+        <p>Read more: <a href="12-long-running.html#resumability">Chapter 12, resumability</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q20"><label for="can-q20">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q21">
+      <h3>21. What makes a long-running agent different?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>It must survive crashes, restarts, deploys, and long waits for events or people. That brings checkpoints, queues, workers, retries, schedules, idempotency, and monitoring. Those are distributed-systems problems. A durable agent is defined by what it can recover from, not by how long it runs.</p>
+        <p>Read more: <a href="12-long-running.html#interactive-vs-durable">Chapter 12, interactive vs durable</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q21"><label for="can-q21">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q22">
+      <h3>22. What should be deterministic versus model-driven?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Keep these deterministic: security and permissions, money movement, invariants, validation, budgets, known process steps, idempotency, and routing by authoritative data. Let the model handle ambiguous input, choosing tools when the path is unknown, writing content and code, and summarizing. Put each decision where the knowledge is.</p>
+        <p>Read more: <a href="19-what-you-design.html#decide-deterministic">Chapter 19, what should be deterministic</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q22"><label for="can-q22">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q23">
+      <h3>23. Where should security be enforced?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Outside the model. Use enforced gates on the tool path. Use containment: filesystem mounts, sandboxes, and network egress rules. Use controls in the other services: scoped short-lived credentials, branch protection, and access policies. A prompt can state a rule, but it cannot enforce one.</p>
+        <p>Read more: <a href="10-sandboxing.html#permission-vs-boundary">Chapter 10, permissions vs boundaries</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q23"><label for="can-q23">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q24">
+      <h3>24. Why are sandboxes needed?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Tools turn model output into real effects, and that output can be wrong or steered by injected text. A sandbox limits what the process can touch at all: files, network destinations, and credentials. That caps the damage even when the model or the approval step fails.</p>
+        <p>Read more: <a href="10-sandboxing.html#why-security">Chapter 10, why tools create a security problem</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q24"><label for="can-q24">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q25">
+      <h3>25. How do human approval gates work?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>The runtime catches a matching action before it runs. It saves a checkpoint with the exact pending call and asks a person to approve, edit, or reject it. It waits, possibly for days. Then it resumes. An approved call runs exactly as approved. An edited or replacement call goes through the policy again. A rejection goes back to the model as the tool result.</p>
+        <p>Read more: <a href="11-human-in-the-loop.html#mechanism">Chapter 11, the mechanism</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q25"><label for="can-q25">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q26">
+      <h3>26. How do agents communicate?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Through shared state, messages, an event bus, task queues, parent and child return values, a blackboard, or a database. Each one trades coupling, consistency, visibility, and context cost. Whatever a model must act on has to enter its context, so pass references instead of full contents where you can.</p>
+        <p>Read more: <a href="13-communication.html#tradeoffs">Chapter 13, tradeoffs</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q26"><label for="can-q26">I can answer this</label></div>
+    </article>
+  </section>
+
+  <section id="quality">
+    <h2>Quality and design</h2>
+
+    <article class="q-item" id="q27">
+      <h3>27. What causes infinite loops?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Results that do not change the model's next decision. Missing or vague success criteria. Tools that keep failing with similar errors. Results that were truncated or compacted away, so the model asks again. And a runtime with no exits. The fixes are budgets, repeat detectors, clear success criteria, and escalation to a person.</p>
+        <p>Read more: <a href="15-reliability.html#infinite-loops">Chapter 15, infinite loops</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q27"><label for="can-q27">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q28">
+      <h3>28. How do we evaluate agents?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Run whole tasks in reproducible environments, several trials each. Grade the outcome, and sometimes the path, with deterministic checks first and model or human graders after. Track completion, correctness, policy compliance, cost, latency, model calls, interventions, recovery, and robustness. Use pass^k, where all k trials must succeed, when reliability matters.</p>
+        <p>Read more: <a href="16-evaluation.html#why-harder">Chapter 16, why agents are harder to evaluate</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q28"><label for="can-q28">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q29">
+      <h3>29. Which parts benefit primarily from better models?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Choosing the next action, reasoning about errors, writing code and arguments, following long instructions, planning, and judging what is relevant. Even these depend on the context and tools being good.</p>
+        <p>Read more: <a href="18-model-vs-architecture.html#better-model">Chapter 18, better model</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q29"><label for="can-q29">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q30">
+      <h3>30. Which parts require good systems architecture?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Security boundaries, permissions, durability and recovery, idempotency, budgets, context selection policy, verification, monitoring, and evaluation. A better model does not fix any of these.</p>
+        <p>Read more: <a href="18-model-vs-architecture.html#attribution">Chapter 18, attributing a gain</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q30"><label for="can-q30">I can answer this</label></div>
+    </article>
+
+    <article class="q-item" id="q31">
+      <h3>31. Given a problem, can I design a reasonable agent architecture for it?</h3>
+      <details class="answer"><summary>Model answer</summary>
+        <p>Work through the brief. Does it need an agent, or is a workflow enough? Which tools does it need, and what is each one's effect class? Then decide the state, the context policy, memory, planning, and delegation. Name the security boundary and the approval points. Plan for crashes and retries, and decide how you will know it works. Practice on the ten exercises before you trust the habit.</p>
+        <p>Read more: <a href="21-design-brief.html#template">Chapter 21, the brief template</a> and <a href="20-exercises.html#rubric">Chapter 20, the rubric</a></p>
+      </details>
+      <div class="can-answer-row"><input type="checkbox" class="can-answer" id="can-q31"><label for="can-q31">I can answer this</label></div>
+    </article>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

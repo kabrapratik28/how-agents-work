@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tools · How AI Agents Work</title>
+<meta name="description" content="A tool call is a structured request. The runtime validates it, checks policy, runs it, and returns a result tied to the call id.">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/widgets/tool-call.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 2 · The core loop</p>
+    <h1>Tools</h1>
+    <p class="lede">A tool is a function your runtime exposes. The model never runs it. The model writes a request, and your code decides whether and how to carry it out.</p>
+    <div class="loop-map" data-focus="decide act"></div>
+  </header>
+
+  <section id="what-is-a-tool">
+    <h2>What a tool really is</h2>
+    <p>From the model's side, a tool is a few lines of text in its context. From the runtime's side, it is an ordinary function plus rules about when it may run. Here is the core, in the smallest form.</p>
+<pre><code>name: search_files
+input:
+    query: string
+output:
+    matching files</code></pre>
+    <p>A tool in a real runtime has six parts.</p>
+    <ul>
+      <li><strong>Name.</strong> What the model writes to call it, such as <code>search_files</code>.</li>
+      <li>Description. When and how to use the tool, in plain words.</li>
+      <li>Input schema. The arguments, their types, and which ones are required.</li>
+      <li>Implementation. The code that runs. The model never sees it.</li>
+      <li>Output format. What comes back, and how big it may get.</li>
+      <li>Policy metadata. What the call can affect, and whether it needs approval.</li>
+    </ul>
+    <p>Only the first three reach the model. It picks tools from their names, descriptions, and schemas alone. So a description is a prompt. A vague description causes wrong calls, just as a vague instruction does.</p>
+<pre><code>search_files = Tool(
+    name="search_files",
+    description="Search for literal text in files under the workspace. "
+                "Returns matching lines as path:line: text.",
+    schema={"query": str, "path": str | None, "max_results": int | None},
+    run=search_impl,          # ordinary code, never shown to the model
+    effect="read-only",       # policy metadata, read by the runtime
+    max_output_lines=200,     # output limit, enforced by the runtime
+)</code></pre>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Tool use = structured model output + runtime function dispatch. The model writes a request in a known format. Your code looks up the function by name and decides whether to call it.</p>
+    </aside>
+  </section>
+
+  <section id="flow">
+    <h2>The life of one call</h2>
+    <p>Here is the whole flow. Watch who does each step.</p>
+    <figure>
+<pre class="diagram" aria-label="The runtime advertises tools, the model outputs a call, the runtime validates and executes it, and the result returns to the model on its next call">
+<span class="c-runtime">Runtime</span> tells model: "These tools exist."
+        ↓
+<span class="c-model">Model</span> outputs:
+  "Call search_files(query='authentication')"
+        ↓
+<span class="c-runtime">Runtime</span> validates the request
+        ↓
+<span class="c-runtime">Runtime</span> executes code
+  (the <span class="c-tool">tool</span> touches the world)
+        ↓
+Result returned to the <span class="c-model">model</span>
+  (it reads it on its next call)
+</pre>
+    </figure>
+    <p>In messages, the request and the result look like this.</p>
+<pre><code>// the model's output: one assistant message
+{"role": "assistant", "tool_calls": [
+  {"id": "call_1", "name": "search_files",
+   "arguments": {"query": "authentication"}}]}
+
+// what the runtime appends after running it
+{"role": "tool", "tool_call_id": "call_1",
+ "content": "auth/session.py:3: def is_valid(token, now): ..."}</code></pre>
+    <p>Three details matter.</p>
+    <ul>
+      <li>The request carries an id, and the result carries the same id. That is how a result finds its request.</li>
+      <li>The model is not waiting while the tool runs. Its call has ended. The runtime calls it again later, with the result in the history.</li>
+      <li>Field names differ between vendors. Some APIs send the arguments as a string of JSON that the runtime must parse first. The shape is the same everywhere.</li>
+    </ul>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>A tool call is an RPC request. The tool list is the interface definition, and the schema is the IDL. The call id is a request id that matches each reply to its request. Your runtime plays the server: it parses, checks, authorizes, dispatches, and replies.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> the caller is a model, not compiled code. Nothing type-checks its request before it arrives, unless the provider constrains generation. It can call the wrong method, invent an argument, or act on instructions it read in a file. It also does not block on the reply. It stops, and your code starts it again with the reply as input. So treat every request as untrusted, and remember that every reply becomes part of a prompt.</p>
+    </aside>
+  </section>
+
+  <section id="schemas">
+    <h2>Schemas: the contract</h2>
+    <p>A schema says which arguments exist, what type each one has, and which are required. The definition the model sees is usually JSON Schema. You rarely write it by hand. Frameworks usually generate it from types in your code.</p>
+<pre><code>{"name": "search_files",
+ "description": "Search for literal text in files under the workspace. ...",
+ "parameters": {
+   "type": "object",
+   "properties": {
+     "query": {"type": "string", "description": "Text to find, not a regex"},
+     "path": {"type": "string", "description": "File or folder. Default: all"},
+     "max_results": {"type": "integer", "minimum": 1, "maximum": 50}},
+   "required": ["query"],
+   "additionalProperties": false}}</code></pre>
+    <p>A few habits make schemas easier for a model to use well.</p>
+    <ul>
+      <li>Use few parameters, with plain names. Write <code>path</code>, not <code>p</code>.</li>
+      <li>Use enums for closed choices, such as <code>"open" | "closed"</code>.</li>
+      <li>State defaults in the description, so the model knows it can leave a field out.</li>
+      <li>Reject unknown fields instead of ignoring them. An ignored field is a silent bug.</li>
+    </ul>
+    <p>A schema checks shape, not meaning. A string can hold a path outside the workspace. An integer can be a valid id for the wrong customer. Those need the checks in the next section.</p>
+  </section>
+
+  <section id="validation">
+    <h2>Validating arguments</h2>
+    <p>Arguments are untrusted input. Treat them like a request body from the internet. A model can produce a wrong type, a missing field, or a value that is valid but harmful.</p>
+    <p>Validation happens in layers. Each layer catches something the one before it cannot.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Four checks before a tool runs</caption>
+        <thead><tr><th scope="col">Check</th><th scope="col">Question</th><th scope="col">Example failure</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Parse</th><td>Is it well-formed?</td><td>The reply was cut off in the middle of the arguments</td></tr>
+          <tr><th scope="row">Schema</th><td>Right fields and types?</td><td><code>max_results: "all"</code> where an integer is required</td></tr>
+          <tr><th scope="row">Semantic</th><td>Does it make sense now?</td><td>An edit whose old text is no longer in the file</td></tr>
+          <tr><th scope="row">Policy</th><td>Is it allowed?</td><td>Reading <code>../deploy/prod.env</code>, outside the workspace</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The first two are mechanical, and a library can do them. The last two need your rules: which objects are current, and which actions are allowed.</p>
+    <p>A failed check never runs the tool. It produces an error result instead, tied to the same call id. The model reads it and can try again.</p>
+    <p>Stale objects deserve a name. Say the model reads a file at step 3 and asks to edit it at step 9. Someone changed the file in between. A good edit tool takes the old text as an argument and refuses if it no longer matches. That is a compare-and-swap. It turns a silent overwrite into an error the model can fix. <a href="03-state.html#source-of-truth">Chapter 3</a> returns to this.</p>
+  </section>
+
+  <section id="errors">
+    <h2>When a call fails</h2>
+    <p>Tools fail. Files go missing, commands time out, and services return errors. What matters is what the runtime does next.</p>
+    <p>The usual rule is simple. Return the error to the model as the tool result. Do not crash the run, and do not hide the failure. Models often recover well when they can see what went wrong.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Who handles which failure</caption>
+        <thead><tr><th scope="col">Failure</th><th scope="col">Who handles it</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Network timeout, rate limit</th><td>The runtime retries with backoff. The model sees it only if retries run out.</td></tr>
+          <tr><th scope="row">Invalid arguments</th><td>The model, from an error result that says how to fix the call</td></tr>
+          <tr><th scope="row">Denied by policy</th><td>The model, from an error result that says why. It changes its plan.</td></tr>
+          <tr><th scope="row">Not found, conflict, stale object</th><td>The model, from an error result with a hint</td></tr>
+          <tr><th scope="row">A bug in the tool</th><td>The model gets an error result. You get an alert.</td></tr>
+          <tr><th scope="row">The same failure again and again</th><td>The runtime stops the run or asks a person</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Write error messages for the model. Say what was wrong, what is allowed, and what to try next. "No such file: auth/tokens.py. Similar: auth/token_utils.py." beats "ENOENT".</p>
+    <p>A nonzero exit code is not a tool error. If <code>pytest</code> runs and two tests fail, the tool worked. The failing output is exactly what the model asked for.</p>
+    <p>Every call needs exactly one result before the next model call. A call with no result leaves a hole in the history, and some APIs reject it. After a crash or a cancel, write a result anyway, such as "cancelled".</p>
+  </section>
+
+  <section id="output-limits">
+    <h2>Big outputs</h2>
+    <p>A tool can return far more text than the context can hold. One verbose test run can print over a thousand lines. Pasting all of it causes three problems. The context fills up. Every later call costs more, because the history is re-sent. And the lines that matter get buried.</p>
+    <p>The common fix has three parts. Cap the output at a size limit. Save the full output where the agent can reach it, such as a file. Return a preview with an explicit marker that says how much was cut and where the rest is.</p>
+<pre><code>exit code 1
+============================= test session starts =============================
+collected 1200 items
+[... 1,220 lines truncated. Full output saved to .patch/outputs/call_1.log ...]
+FAILED tests/test_auth.py::test_login_expired_token - assert 200 == 401
+FAILED tests/test_billing.py::test_refund_rounding - assert ...
+================== 2 failed, 1198 passed in 48.31s ==================</code></pre>
+    <p>Keep the head and the tail. The head shows what ran. The tail often holds the summary. The marker matters as much as the preview. Without it, the model may treat a partial output as the whole thing.</p>
+    <p>Truncating structured output can break it. Cut JSON at a character limit and the model gets invalid JSON. For structured results, drop whole items, count what you dropped, and keep the shape valid.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0): read and bash output is cut at 2,000 lines or 50 KB. Bash saves the full output to a temp file and tells the model where it is.</li>
+        <li><strong>Deep Agents</strong> (0.7.28): tool results over 20,000 tokens go to a file named after the call id. The model sees the first 5 and last 5 lines, plus the path.</li>
+        <li><strong>Hermes</strong> (v0.22.2): terminal output is capped at 50,000 characters, keeping the head and the tail.</li>
+      </ul>
+    </aside>
+    <p>Limits only slow the growth. <a href="04-context.html">Chapter 4</a> covers what to do when the context fills up anyway.</p>
+  </section>
+
+  <section id="parallel-calls">
+    <h2>Several calls at once</h2>
+    <p>A model can ask for several calls in one reply. It might read two files at once. The runtime can run independent calls at the same time and save wall-clock time. Three rules keep this correct.</p>
+    <ul>
+      <li><strong>Match by id, not by order.</strong> Calls can finish in any order. Each result carries its call id.</li>
+      <li>Handle partial failure. If one call fails, return its error and still return the other results.</li>
+      <li>Sequence what depends. If one call needs another's output, they cannot run together. Finding a file and reading it are two steps. Two writes to the same file are a race.</li>
+    </ul>
+    <p>Usually the model handles dependencies by asking in separate replies. The runtime still guards against races, because it cannot assume the model got it right.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0): runs calls concurrently by default and records results in the order the model asked for them. One sequential tool makes the whole batch sequential.</li>
+        <li><strong>Hermes</strong> (v0.22.2): read-only tools run concurrently. A file write joins a parallel batch only if its path does not overlap another call's path.</li>
+        <li><strong>Deep Agents</strong> (0.7.28): a second write, edit, or delete on the same path in one reply is refused.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="tool-call-widget">
+    <h2>Step through five calls</h2>
+    <p>Step through five cases below. Watch three panels: what the model asked for, what the runtime checked and ran, and what goes back into the history. Watch the counters too. A blocked call adds to "Blocked", never to "Executed".</p>
+    <div class="widget" data-widget="tool-call">
+      <p class="noscript">Interactive widget. Without JavaScript, here are the five cases in text. Valid call: the runtime checks the schema and the policy, runs the search, and returns a result tied to call_1. Bad argument: the model writes "all" where an integer is required. The runtime runs nothing and returns an error for call_1. The model retries as call_2. Policy denial: the path <code>../deploy/prod.env</code> passes the schema but lies outside the workspace, so it is denied. Parallel calls: the second read finishes first, the first fails, and each result attaches to its own id. Large output: the runtime saves a 1,227-line log and returns a preview whose marker names the saved file.</p>
+    </div>
+    <p>Three things from the widget carry through the rest of the course.</p>
+    <ul>
+      <li>Every result names its call id, including errors and denials.</li>
+      <li>Schema validation and policy are separate checks. In the policy case, the schema passed.</li>
+      <li>The model fixes its own mistakes when the error says how. The fix is a new call with a new id.</li>
+    </ul>
+  </section>
+
+  <section id="structured-outputs">
+    <h2>Structured outputs</h2>
+    <p>A tool call is one kind of structured output. The model emits data in a known shape instead of free text. You can use the same mechanism for the final answer.</p>
+    <p>There are two ways to get valid structure.</p>
+    <ul>
+      <li><strong>Constrained decoding.</strong> The provider restricts generation so the output always matches the schema. Type errors disappear. Wrong values of the right type do not.</li>
+      <li>Validate and retry. The runtime parses the output, checks it, and sends errors back. It costs extra calls, but it works with any model.</li>
+    </ul>
+    <p>A common pattern makes the final answer a tool. The runtime offers a tool such as <code>submit_result</code>, whose schema is the answer format. When the model calls it, the run ends with typed data.</p>
+<pre><code>submit_result(
+    summary="Removed the 10-minute grace period in auth/session.py",
+    files_changed=["auth/session.py"],
+    tests_passed=True,           # a claim, not evidence
+)</code></pre>
+    <p>Structure helps your done check, because it has fields to verify. Verify them against evidence, though. The model filled in <code>tests_passed</code> too. The runtime should check the last test run itself.</p>
+  </section>
+
+  <section id="discovery">
+    <h2>How the model finds tools</h2>
+    <p>The model can only call tools it knows about. Discovery is how a tool's definition gets into the context. There are four common ways.</p>
+    <ul>
+      <li><strong>A static list.</strong> The runtime sends the same tools on every call. It is simple and easy to cache. It works well for a handful of tools.</li>
+      <li>A filtered list. The runtime shows only the tools that work right now. A missing credential or the wrong environment hides a tool.</li>
+      <li>Listing from a server. A protocol such as MCP lets the runtime ask another process which tools it offers. See the next section.</li>
+      <li>Tool search. The model gets one search tool over a large catalog. The runtime loads only the definitions the model asks for.</li>
+    </ul>
+    <p>Why not offer everything? Every definition costs tokens on every call. Similar tools also make the choice harder. If two tools overlap, the model has to guess.</p>
+  </section>
+
+  <section id="mcp">
+    <h2>MCP: a standard plug for tools</h2>
+    <p>The Model Context Protocol (MCP) is a protocol for exposing tools from another process. An MCP server lists its tools with names, descriptions, and schemas. Your runtime passes those definitions to the model. When the model calls one, your runtime forwards the call to the server and returns the result.</p>
+    <p>MCP standardizes the plumbing: discovery and invocation. It is not an agent loop. Your runtime still runs the loop, validates calls, and decides what runs. It is not a security boundary either. A server's tools run with whatever access that server has. Its descriptions and results are untrusted text that lands in your context.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>An MCP tool = a tool whose definition and code live in another process, reached over a standard protocol. Same loop, same checks, longer wire.</p>
+    </aside>
+  </section>
+
+  <section id="destructive-tools">
+    <h2>Effect classes and destructive tools</h2>
+    <p>Tools differ in what they can break. Give every tool an effect class. The class decides how much checking a call needs.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Three effect classes</caption>
+        <thead><tr><th scope="col">Class</th><th scope="col">Examples</th><th scope="col">Typical treatment</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Read-only</th><td><code>search_files</code>, <code>read_file</code></td><td>Runs freely, within its scope</td></tr>
+          <tr><th scope="row">Reversible write</th><td><code>edit_file</code> in a git repo</td><td>Runs, with a known way back</td></tr>
+          <tr><th scope="row">External or irreversible</th><td>Send an email, push to main, <code>DROP TABLE</code>, pay</td><td>Needs approval, or gets no tool at all</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Read-only is not the same as harmless. Reading a secret and then sending it somewhere is a leak. <a href="10-sandboxing.html">Chapter 10</a> covers that threat.</p>
+    <p>Generic tools blur the classes. <code>run_command("pytest")</code> only reads. <code>run_command("rm -rf build")</code> destroys. A shell tool has no fixed effect class. That is why shells get allowlists, sandboxes, or approval for anything unusual.</p>
+    <p>Design tools to shrink what a bad call can damage.</p>
+    <ul>
+      <li>Prefer narrow tools for risky actions. Offer <code>archive_table(name)</code>, not raw SQL.</li>
+      <li>Split reads from writes. Offer <code>get_order</code> and <code>refund_order</code>, not one tool with an action field.</li>
+      <li>Require exact targets. Deletes take an id, not a pattern.</li>
+      <li>Offer a dry run that shows what would change.</li>
+      <li>Make writes safe to repeat, with an idempotency key. <a href="12-long-running.html">Chapter 12</a> explains why.</li>
+    </ul>
+  </section>
+
+  <section id="permissions">
+    <h2>Permissions</h2>
+    <p>A permission answers one question: may this call run now? The answer is allow, deny, or ask a person.</p>
+    <p>Where you enforce it matters more than how you phrase it. A sentence in the system prompt is a request. The model can misread it, and injected text can argue against it. A check in the tool dispatcher is code. It runs on every call that goes through the dispatcher.</p>
+<pre><code>def dispatch(call):
+    tool = TOOLS.get(call.name)
+    if tool is None:
+        return error(call.id, "unknown tool: " + call.name)
+    problems = tool.schema.validate(call.arguments)
+    if problems:
+        return error(call.id, "invalid arguments: " + "; ".join(problems))
+    verdict, reason = policy(tool, call.arguments)   # "allow" | "deny" | "ask"
+    if verdict == "deny":
+        return error(call.id, "denied by policy: " + reason)
+    if verdict == "ask":
+        return pause_for_approval(call)              # chapter 11
+    output = tool.run(**call.arguments)
+    return result(call.id, limit(output, artifact_for=call.id))</code></pre>
+    <p>Keep two limits in mind. First, a gate covers only the paths it intercepts. If the shell tool can do what a gated file tool does, the gate has a hole. Second, a permission check is not containment. It refuses or asks. It cannot stop a process that finds another way. For that you need a sandbox, covered in <a href="10-sandboxing.html">chapter 10</a>. Approval gates get their own chapter, <a href="11-human-in-the-loop.html">chapter 11</a>.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Deep Agents</strong> (0.7.28): path rules cover the built-in file tools only. They do not cover the shell tool, custom tools, or MCP tools.</li>
+        <li><strong>Hermes</strong> (v0.22.2): its docs call the file write guards "defense-in-depth, not a hard boundary". The terminal runs as the same OS user and can still overwrite those paths.</li>
+        <li><strong>Pi</strong> (1.3.0) has no built-in permission system. Its docs recommend a container, VM, or sandbox instead.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="code-as-action">
+    <h2>Code as the action</h2>
+    <p>Some agents let the model write code instead of single calls. The model writes a short script. The script calls tools as functions, loops over results, and prints what matters. The runtime runs it in a sandbox and returns only the printed output.</p>
+<pre><code># one model call, many tool calls, one short result
+hits = tools.search_files(query="expires_at")
+for path in sorted({h.path for h in hits}):
+    text = tools.read_file(path=path)
+    if "timedelta(minutes=10)" in text:
+        print(path, "has a 10-minute grace period")</code></pre>
+    <p>This packs many steps into one model call. It also keeps raw intermediate data out of the context. The cost is risk, because the model is now writing programs. Run them in a sandbox. Route the tool calls inside the script through the same dispatcher, so the same checks apply.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Code as action = the model writes a program, the runtime runs it in a sandbox, and tool calls become function calls inside it.</p>
+    </aside>
+  </section>
+
+  <section id="why-tools-matter">
+    <h2>Why tools make models so much more useful</h2>
+    <p>Without tools, a model can only answer from its training and from what you paste in. Tools add four things.</p>
+    <ul>
+      <li><strong>Fresh facts.</strong> The model can look things up now instead of recalling a snapshot.</li>
+      <li>Action. It can change files, run programs, and call services.</li>
+      <li>Feedback. It can check its own work: run the tests, read the error, try again. This turns guesses into checked results.</li>
+      <li>Exact work. Code computes, sorts, and counts exactly. A model doing arithmetic in its head can slip.</li>
+    </ul>
+    <p>The model supplies judgment: which tool, which arguments, and what the result means. The tools supply contact with the real world. Each is weak without the other.</p>
+    <p>This is why coding suits agents so well. A coding agent needs only a few tools, and a test suite gives fast, honest feedback. <a href="09-coding-agents.html">Chapter 9</a> builds on this.</p>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch gets real tools</h2>
+    <p>Patch version 2 gets four tools. Each has an effect class. The dispatcher checks every call before it runs. Invalid and denied calls come back as error results, so Patch can correct itself. Long outputs go to files, with a short marked preview.</p>
+<pre><code># Patch v1: one tool, no checks
+- tools = [run_command]
+# Patch v2: four tools, each with an effect class
++ tools = [
++     Tool("search_files", effect="read-only"),
++     Tool("read_file",    effect="read-only"),
++     Tool("edit_file",    effect="reversible write"),   # repo only; git can undo it
++     Tool("run_command",  effect="depends on the command",
++          allow=["pytest", "git status", "git diff"]),
++ ]
++ # every call: validate, check policy, run, cap the output</code></pre>
+    <p>Patch still keeps no record of its work beyond the message list. It cannot tell you which files it changed or whether the last test run passed. Chapter 3 gives it state.</p>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Vague tool descriptions</h3>
+      <dl>
+        <dt>Why</dt><dd>The description is the model's only manual. Two tools with fuzzy descriptions get mixed up.</dd>
+        <dt>Detect</dt><dd>Traces show the wrong tool, or the same argument mistake, again and again.</dd>
+        <dt>Mitigate</dt><dd>Write descriptions like docs for a new colleague. Say when to use the tool and when not to. Test them on real tasks.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Too many tools</h3>
+      <dl>
+        <dt>Why</dt><dd>Each definition costs tokens on every call. Overlapping tools invite wrong picks.</dd>
+        <dt>Detect</dt><dd>Tool definitions take a large share of each request. Wrong-tool calls rise as you add tools.</dd>
+        <dt>Mitigate</dt><dd>Fewer, clearer tools. Load rarely used ones on demand, for example through tool search.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Swallowed or fatal errors</h3>
+      <dl>
+        <dt>Why</dt><dd>The runtime crashes on a tool error, or returns an empty string. Either way the model cannot recover.</dd>
+        <dt>Detect</dt><dd>Runs that end in exceptions. The same failing call repeated with no change.</dd>
+        <dt>Mitigate</dt><dd>Return every error as a result with a hint. Retry transient errors in code. Cap repeats.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Output floods the context</h3>
+      <dl>
+        <dt>Why</dt><dd>One command prints megabytes, and all of it lands in the history.</dd>
+        <dt>Detect</dt><dd>A token spike right after one tool result.</dd>
+        <dt>Mitigate</dt><dd>Cap outputs, save the full text, and return a marked preview with a reference.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Policy only in the prompt</h3>
+      <dl>
+        <dt>Why</dt><dd>"Never touch files outside the repo" is a request. A confused model or an injected instruction can ignore it.</dd>
+        <dt>Detect</dt><dd>Ask the agent to break the rule. If wording changes the outcome, nothing enforces the rule.</dd>
+        <dt>Mitigate</dt><dd>Check paths and commands in the dispatcher. Contain the process with a sandbox.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Which tools exist, and which actions get no tool at all.</li>
+          <li>The effect class of each tool, and what each class requires.</li>
+          <li>Which checks run before a call executes.</li>
+          <li>Output limits, and where full outputs are kept.</li>
+          <li>Which failures code retries, and which go to the model.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>JSON Schema generated from typed function signatures.</li>
+          <li>The validation and dispatch code.</li>
+          <li>Retries with backoff for transient errors.</li>
+          <li>Truncation, artifact files, and marker text.</li>
+          <li>Tool wrappers around existing APIs.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">How does a tool call actually work, from the model's output to its next call? (Q9)</p>
+      <details class="answer"><summary>Answer</summary><p>The runtime lists the tools in the context. The model emits a structured request with a name, arguments, and an id. The runtime parses and validates the arguments, checks policy, and runs the function. It appends the output as a result tied to that id. On the next call the model reads the result. The model never executes anything.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">The model calls <code>read_file</code> with the path <code>../.env</code>. The schema says the path is a string. What should happen?</p>
+      <ol class="options">
+        <li>It runs, because the schema check passed</li>
+        <li data-correct>The policy check denies it, and an error result goes back for that call id</li>
+        <li>The runtime drops the call without a result</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>A schema checks shape, not meaning. The policy resolves the path, finds it outside the workspace, and denies it. Nothing runs, and the model still gets a result, so the history stays whole.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Two parallel calls finish in reverse order, and the first one fails. What does the model receive?</p>
+      <ol class="options">
+        <li>Only the successful result</li>
+        <li data-correct>Two results, each tied to its call id, one marked as an error</li>
+        <li>An exception that ends the run</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>Results attach by id, not by arrival order. A partial failure returns the error for one call and keeps the other result.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Where should the rule "never delete files outside the repo" be enforced? (Q23)</p>
+      <details class="answer"><summary>Answer</summary><p>In code on the tool path, as a check in the dispatcher, and in the environment, as a sandbox that cannot reach those files. A sentence in the prompt helps the model behave, but it enforces nothing.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>A tool is a name, a description, a schema, and code. The model sees only the first three.</li>
+      <li>A tool call is a request. The runtime validates it, checks policy, runs it, and returns a result tied to the call id.</li>
+      <li>Checks come in layers: parse, schema, semantic, policy. A blocked call never runs, and it still gets a result.</li>
+      <li>Errors go back to the model as results. Code retries transient failures.</li>
+      <li>Cap large outputs with an explicit marker and a reference to the full artifact.</li>
+      <li>Effect classes decide how much checking a tool needs. Enforce permissions in code, not in prompts.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+<script defer src="assets/widgets/stepper.js"></script>
+<script defer src="assets/widgets/tool-call.js"></script>
+</body>
+</html>

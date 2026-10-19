@@ -13,8 +13,15 @@ const testDir = path.join(root, 'tools/sims');
 
 // Same realm as the tests, so deepEqual compares plain arrays and objects without prototype mismatches.
 globalThis.window = globalThis;
+// A broken widget file must not block other authors' tests: report it and carry on.
+const loadErrors = {};
 for (const f of fs.readdirSync(widgetDir).filter((f) => f.endsWith('.js')).sort()) {
-  vm.runInThisContext(fs.readFileSync(path.join(widgetDir, f), 'utf8'), { filename: f });
+  try {
+    vm.runInThisContext(fs.readFileSync(path.join(widgetDir, f), 'utf8'), { filename: f });
+  } catch (err) {
+    loadErrors[f.replace(/\.js$/, '')] = err;
+    console.log(`LOAD ERROR ${f}: ${err.message}`);
+  }
 }
 const sims = globalThis.AC && globalThis.AC.sims ? globalThis.AC.sims : {};
 
@@ -36,5 +43,7 @@ for (const f of tests) {
     console.log(`FAIL ${name}\n     ${String(err && err.stack || err).split('\n').slice(0, 6).join('\n     ')}`);
   }
 }
-console.log(`\n${tests.length - failed}/${tests.length} sim test file(s) passed`);
+const relevantLoadErrors = Object.keys(loadErrors).filter((n) => !only.length || only.includes(n));
+failed += relevantLoadErrors.length;
+console.log(`\n${tests.length - failed}/${tests.length} sim test file(s) passed` + (relevantLoadErrors.length ? `, ${relevantLoadErrors.length} widget file(s) failed to load` : ''));
 process.exit(failed ? 1 : 0);

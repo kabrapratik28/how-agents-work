@@ -23,7 +23,7 @@ SKIP_CLASSES = {"diagram", "trace", "flow", "options", "loop-map", "kicker"}
 
 BANNED_WORDS = [
     r"delv(?:e|es|ed|ing)", r"tapestr(?:y|ies)", r"testaments?", r"underscor(?:e|es|ed|ing)",
-    r"leverag(?:e|es|ed|ing)", r"landscapes?", r"seamless(?:ly)?", r"robust(?:ly|ness)?",
+    r"leverag(?:e|es|ed|ing)", r"landscapes?", r"seamless(?:ly)?", r"robust(?:ly)?",  # "robustness" stays: it is a metric name in the owner's spec
     r"foster(?:s|ed|ing)?", r"navigat(?:e|es|ed|ing)", r"load-bearing", r"spines?", r"structural(?:ly)?",
 ]
 BANNED_RE = re.compile(r"\b(" + "|".join(BANNED_WORDS) + r")\b", re.I)

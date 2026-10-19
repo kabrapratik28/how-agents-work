@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>State · How AI Agents Work</title>
+<meta name="description" content="Conversation, context, runtime state, world state, and persistent state. Who holds each one, and which parts the model sees.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 3 · The core loop</p>
+    <h1>State</h1>
+    <p class="lede">An agent's state lives in your runtime and in the world around it. The model sees only a view of that state, rebuilt for every call.</p>
+    <div class="loop-map" data-focus="state update"></div>
+  </header>
+
+  <section id="five-kinds">
+    <h2>Five kinds of state</h2>
+    <p>Ask "where is the agent's state?" and you can get five different answers. They differ in who holds them, how long they last, and whether the model sees them. Most design mistakes in this area come from mixing two of them up.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Five kinds of state, with examples from Patch</caption>
+        <thead><tr><th scope="col">Kind</th><th scope="col">What it is</th><th scope="col">Held by</th><th scope="col">Lasts</th><th scope="col">Example</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Conversation</th><td>The log of messages</td><td>The runtime, sometimes the provider</td><td>The session</td><td>The request, tool calls, tool results</td></tr>
+          <tr><th scope="row">Context</th><td>What one model call receives</td><td>No one: it is rebuilt</td><td>One call</td><td>Instructions, tools, recent messages</td></tr>
+          <tr><th scope="row">Runtime state</th><td>Variables the loop tracks</td><td>The runtime process</td><td>The run</td><td><code>step = 7</code>, files changed</td></tr>
+          <tr><th scope="row">World state</th><td>Files, databases, services</td><td>The world</td><td>Its own lifetime</td><td><code>auth/session.py</code> on disk</td></tr>
+          <tr><th scope="row">Persistent state</th><td>Whatever survives a restart</td><td>Files, databases, stores</td><td>Across runs</td><td>A checkpoint after step 7</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure>
+<pre class="diagram" aria-label="Tools bring world state into the conversation and runtime state. The runtime saves them to persistent storage and builds one context per call for the model.">
+<span class="c-tool">World state</span>
+(files, databases, services)
+   │ tools read it and change it
+   ▼
+<span class="c-state">Conversation + runtime state</span>
+(held by the <span class="c-runtime">runtime</span>)
+   │ save ──▶ <span class="c-state">Persistent state</span>
+   │          (checkpoints, logs)
+   │ build context
+   ▼
+<span class="c-context">Context</span> (one call's view)
+   │
+   ▼
+<span class="c-model">Model</span>
+</pre>
+    </figure>
+  </section>
+
+  <section id="conversation">
+    <h2>Conversation</h2>
+    <p>The conversation is the message log. It holds user messages, the model's replies and tool calls, and tool results. Each entry has a role, and each tool result points back to its call id. It usually only grows: new entries go on the end.</p>
+<pre><code>messages = [
+    {"role": "user", "content": "The auth test fails. Fix it."},
+    {"role": "assistant", "tool_calls": [
+        {"id": "call_1", "name": "run_command",
+         "arguments": {"cmd": "pytest tests/test_auth.py"}}]},
+    {"role": "tool", "tool_call_id": "call_1",
+     "content": "FAILED test_login_expired_token ... 1 failed, 11 passed"},
+]</code></pre>
+    <p>The conversation is not the context. It is the main source the runtime draws on to build the context. Early in a run the two look identical, because the runtime sends everything. They drift apart once the log outgrows the window, or once the runtime starts choosing.</p>
+    <p>Usually your runtime keeps the list. Some provider APIs can store it for you, as <a href="00-llm-vs-agent.html#two-calls">chapter 0</a> showed. That moves the storage. It does not change the idea.</p>
+  </section>
+
+  <section id="context-view">
+    <h2>Context: a view, rebuilt every call</h2>
+    <p>The context is exactly what one model call receives. It is not stored anywhere as the truth. The runtime builds it from state, sends it, and lets it go.</p>
+<pre><code>def build_context(state, budget):
+    parts = [system_prompt(), tool_definitions()]
+    parts += render_task(state)                  # status, plan, last test result
+    parts += recent_messages(state["messages"], budget)
+    return parts                                 # a projection, not a copy</code></pre>
+    <p>Think of it as a query over state. The same state can produce different contexts, depending on the budget and on what the runtime decides is relevant. A summary can stand in for old messages. A large file can appear as a short preview plus a path.</p>
+    <p>Hold one rule for now. If something is not in the context, the model cannot use it on this call. <a href="04-context.html">Chapter 4</a> is about choosing what goes into the view.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Context = render(state, budget), computed fresh for each model call.</p>
+    </aside>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <p>Three systems shrink the view without deleting the log.</p>
+      <ul>
+        <li><strong>Deep Agents</strong> (0.7.28): summarization records a cutoff and a summary. The model sees the summary plus recent messages, while state keeps every raw message.</li>
+        <li><strong>Pi</strong> (1.3.0): a compaction summary is a new entry in the session file. The original entries stay.</li>
+        <li><strong>Hermes</strong> (v0.22.2): compaction marks old message rows as compacted instead of deleting them. They stay searchable.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="runtime-state">
+    <h2>Runtime state</h2>
+    <p>Runtime state is what the loop itself tracks. These are the variables your code needs to run the task. Here is a coding agent's state halfway through a run.</p>
+<pre><code>state = {
+    "messages": [...],
+    "status": "running",        # running | waiting_for_approval | done | failed
+    "step": 7, "max_steps": 30,
+    "cost_usd": 0.42, "max_cost_usd": 2.00,
+    "todo": [{"task": "fix the expiry check", "status": "in_progress"}],
+    "pending_approval": None,
+    "files_read": ["auth/session.py"],
+    "files_changed": ["auth/session.py"],
+    "last_edit_step": 5,
+    "last_test": {"cmd": "pytest tests/test_auth.py", "exit": 0, "after_step": 6},
+}</code></pre>
+    <p>The fields do different jobs. Some steer the loop: status, step, budgets, and pending approvals. Some record evidence: the files changed and the last test run. Some exist for the model: the todo list gets rendered into each context.</p>
+    <p>The model never writes this object directly. It asks for tool calls. The runtime runs them and updates state from the results, not from what the model claims.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>Agent state is application state. The runtime is the server, the state object is its store, and the context is a page rendered from that store for one request. Tool results are events that update the store.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a rendered page goes to a person, and code enforces every rule. Here the page goes to a model that picks the next action from it. Leave a fact out of the view and the decision changes. Put a stale fact in and the model acts on it. And the model cannot write to the store. Its tool calls are requests that your runtime applies or refuses.</p>
+    </aside>
+  </section>
+
+  <section id="world-state">
+    <h2>External world state</h2>
+    <p>World state is everything the agent acts on: files, databases, tickets, and deployed services. It exists without the agent. Other people and processes change it too.</p>
+    <p>The agent never holds the world. It holds observations of it, and every observation has a time, stated or not. The file it read at step 3 is a snapshot. By step 9, a teammate may have pushed a change, or a formatter may have rewritten the file.</p>
+    <p>Tools are the only window. A read tool copies part of the world into the conversation. A write tool changes the world and returns a report. The report is a claim about the world, not the world itself. A later read can confirm it.</p>
+  </section>
+
+  <section id="persistent-state">
+    <h2>Persistent state</h2>
+    <p>Persistent state is whatever survives the process. Ask a blunt question: if the runtime crashes now, what can you get back?</p>
+    <ul>
+      <li><strong>Session logs.</strong> The conversation, saved as it grows, so a person can pick it up later.</li>
+      <li>Checkpoints. A snapshot of runtime state after each step, so the run can continue where it stopped.</li>
+      <li>Artifacts. Saved tool outputs, reports, and patches.</li>
+      <li>Memory stores. Facts curated for future runs.</li>
+    </ul>
+    <p>Order matters around side effects. Record the intent before an action, and the outcome after it. A crash between the two then leaves an "outcome unknown" record you can check, instead of no record at all. <a href="12-long-running.html">Chapter 12</a> covers checkpoints and the harder problem of actions that must not repeat.</p>
+  </section>
+
+  <section id="source-of-truth">
+    <h2>Which copy is true?</h2>
+    <p>The same fact often lives in several places. The file is on disk. A copy sits in the conversation from an earlier read. A summary mentions it. The runtime's <code>files_changed</code> list names it. When the copies disagree, you need a rule for which one wins.</p>
+    <p>A good default: the world is the truth for world facts, and runtime state is the truth for facts about the run. Everything in the context is a cached view of one of those.</p>
+    <p>Three habits follow from that rule.</p>
+    <ul>
+      <li>Re-read before you write. Edit tools take the old text and fail if it changed.</li>
+      <li>Expire derived facts. A passing test result goes stale the moment a file changes, so record which step produced it.</li>
+      <li>Prefer references to copies. Keep a path and a line range in state, not a pasted file.</li>
+    </ul>
+<pre><code>def tests_still_pass(state):
+    t = state["last_test"]
+    last_edit = state["last_edit_step"] or 0
+    return t is not None and t["exit"] == 0 and t["after_step"] > last_edit</code></pre>
+    <p>That check refuses "done" when the last edit came after the last passing run.</p>
+  </section>
+
+  <section id="events">
+    <h2>Events and reducers</h2>
+    <p>One dependable way to keep state straight is to record events, not just current values. Each step appends events: a call was requested, a call was denied, a file changed, the tests ran. Current state is a fold over those events. Front-end developers know this as the reducer pattern. On the server it is called event sourcing.</p>
+<pre><code>def apply(state, event):                   # old state + one event -> new state
+    if event.type == "file_edited":
+        if event.path not in state["files_changed"]:
+            state["files_changed"].append(event.path)
+        state["last_edit_step"] = event.step
+    elif event.type == "tests_ran":
+        state["last_test"] = {"cmd": event.cmd, "exit": event.exit_code,
+                              "after_step": event.step}
+    elif event.type == "approval_decided":
+        state["approvals"].append((event.call_id, event.decision))
+    return state
+
+state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre>
+    <p>The log pays for itself. Replaying it rebuilds state after a crash. Reading it tells you what happened and in which order. Stepping through it is how you debug a bad run.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0): a session is an append-only JSONL file whose entries form a tree. The system prompt and tool list are entries too, so replaying a branch reproduces exactly what the model saw.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="coding-agent-state">
+    <h2>State in a coding agent</h2>
+    <p>Here is the state a coding agent typically keeps, with where each item lives and whether the model needs it.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Coding-agent state: where it lives and what the model sees</caption>
+        <thead><tr><th scope="col">Item</th><th scope="col">Where it lives</th><th scope="col">Shown to the model?</th><th scope="col">Why</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Conversation history</th><td>Runtime message log, saved as a session file</td><td>Yes: recent turns in full, older ones summarized</td><td>The model needs the request and what it has tried</td></tr>
+          <tr><th scope="row">Task status</th><td>Runtime state</td><td>Rarely</td><td>It controls the loop. "Running" tells the model nothing.</td></tr>
+          <tr><th scope="row">Current plan</th><td>Runtime state, or a plan file</td><td>Yes, rendered each call</td><td>It keeps the model on track over many steps</td></tr>
+          <tr><th scope="row">Files inspected</th><td>Runtime state: paths and the step of each read</td><td>As a short list</td><td>It avoids re-reading. The contents stay in the log.</td></tr>
+          <tr><th scope="row">Files changed</th><td>Runtime state, plus git in the world</td><td>Yes, as a list or a diff</td><td>The model must keep track of its own edits</td></tr>
+          <tr><th scope="row">Test results</th><td>Latest run in state, full output as an artifact</td><td>Yes: the summary and the failures</td><td>They drive the next step. The full log is one tool call away.</td></tr>
+          <tr><th scope="row">Outstanding todos</th><td>Runtime state</td><td>Yes</td><td>So nothing gets dropped</td></tr>
+          <tr><th scope="row">Approvals</th><td>Runtime state, checkpointed while waiting</td><td>Only the decisions, as tool results</td><td>The runtime enforces them. The model needs only the outcome.</td></tr>
+          <tr><th scope="row">Artifacts produced</th><td>Files or object storage, referenced from state</td><td>References only</td><td>Large outputs stay out until needed</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Notice the pattern. The model sees what changes its next decision. The runtime keeps what it needs to control the loop, enforce rules, and verify results.</p>
+  </section>
+
+  <section id="what-the-model-sees">
+    <h2>What the model sees, and what it does not</h2>
+    <p>Every field in state needs a decision. Show it, summarize it, reference it, or keep it out.</p>
+    <ul>
+      <li><strong>Show</strong> what changes the next decision: the request, recent results, the plan, and the files changed.</li>
+      <li>Summarize what is long but still relevant, such as old turns and big test logs.</li>
+      <li>Reference what is big and only sometimes needed: full outputs, whole files, earlier sessions. A path costs a few tokens, and a tool can fetch the rest.</li>
+      <li>Keep out what the runtime enforces or the model must not have: approval mechanics, credentials, and other users' data.</li>
+    </ul>
+    <p>Credentials are the firm rule. A secret in the context can end up in a log, a commit message, or a reply. Keep secrets inside the tools that use them, outside the model's view. <a href="10-sandboxing.html">Chapter 10</a> covers why.</p>
+    <p>Budgets are a judgment call. Showing "step 27 of 30" can help the model wrap up. It can also make it rush. Either way, the runtime enforces the limit.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0): a tool result has two parts. <code>content</code> goes to the model. <code>details</code> serves the interface and state, and is never sent.</li>
+        <li><strong>Hermes</strong> (v0.22.2) re-injects the todo list after every compaction, and caps it at 256 entries for that reason. It also removed its "context pressure" warnings, because they made models give up early on complex tasks.</li>
+        <li><strong>Deep Agents</strong> (0.7.28) keeps background task ids in their own state field, so compacting the history cannot lose them.</li>
+      </ul>
+    </aside>
+    <p>Now sort some items yourself. For each one, pick the kind of state it is.</p>
+    <div class="quiz-group">
+      <p class="quiz-score" aria-live="polite">Pick an answer for each card.</p>
+      <div class="quiz sorter">
+        <p class="q">The exact input sent to the model on step 7</p>
+        <ol class="options"><li>Conversation</li><li data-correct>Context</li><li>Runtime</li><li>World</li><li>Persistent</li></ol>
+        <details class="answer"><summary>Why</summary><p>Context. It existed for that one call. The runtime built it from state, sent it, and discarded it.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q"><code>step = 7</code> and <code>max_steps = 30</code></p>
+        <ol class="options"><li>Conversation</li><li>Context</li><li data-correct>Runtime</li><li>World</li><li>Persistent</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime state. The loop needs it to enforce the step budget.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">The contents of <code>auth/session.py</code> on disk</p>
+        <ol class="options"><li>Conversation</li><li>Context</li><li>Runtime</li><li data-correct>World</li><li>Persistent</li></ol>
+        <details class="answer"><summary>Why</summary><p>World state. Any copy the agent holds is an observation, and it can go stale.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">The tool result for <code>call_3</code>, with its call id</p>
+        <ol class="options"><li data-correct>Conversation</li><li>Context</li><li>Runtime</li><li>World</li><li>Persistent</li></ol>
+        <details class="answer"><summary>Why</summary><p>Conversation. It is an entry in the message log. It reaches a context only if the runtime includes it.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">A snapshot written after step 7 so the run can resume</p>
+        <ol class="options"><li>Conversation</li><li>Context</li><li>Runtime</li><li>World</li><li data-correct>Persistent</li></ol>
+        <details class="answer"><summary>Why</summary><p>Persistent state. It is a saved copy of runtime state, and it survives a crash.</p></details>
+      </div>
+      <div class="quiz sorter">
+        <p class="q">The list of files the agent has changed in this run</p>
+        <ol class="options"><li>Conversation</li><li>Context</li><li data-correct>Runtime</li><li>World</li><li>Persistent</li></ol>
+        <details class="answer"><summary>Why</summary><p>Runtime state. The runtime records it from edit results. It may also render the list into each context, and save it in checkpoints.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="state-vs-memory">
+    <h2>State vs memory</h2>
+    <p>State and memory both keep information outside the model. They differ in purpose and lifetime.</p>
+    <ul>
+      <li><strong>State serves the current run.</strong> Where are we, what have we done, what is pending?</li>
+      <li>Memory serves future runs. What should we know next time?</li>
+      <li>State is created with the run and finished with it, though you may keep it for audit. Memory is written on purpose, curated, and read back later.</li>
+    </ul>
+    <p>They overlap. A saved session is persistent state. If a later run searches it for a similar bug, it is acting as memory. <a href="05-memory.html#state-vs-memory">Chapter 5</a> takes this further.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>State = what the run needs now. Memory = what you chose to keep for later, plus a way to find it again.</p>
+    </aside>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch gets a state object</h2>
+    <p>Patch version 3 keeps a state object next to its message list. The runtime updates it from tool results, not from what the model says. The done check now reads evidence from state: the last test run passed, and it ran after the last edit.</p>
+<pre><code># Patch v2: the message list was the only state
+- messages = [...]
+# Patch v3: a state object the runtime owns
++ state = {
++     "messages": [...],
++     "status": "running",          # running | waiting_for_approval | done | failed
++     "step": 0, "max_steps": 30,
++     "files_read": [], "files_changed": [],
++     "last_edit_step": None,
++     "last_test": None,            # {"cmd", "exit", "after_step"}
++     "approvals": [],
++ }</code></pre>
+    <p>Patch still sends the whole message list on every call. As runs get longer, that stops fitting. Chapter 4 gives Patch a context builder.</p>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Acting on a stale view</h3>
+      <dl>
+        <dt>Why</dt><dd>The model edits a file based on a read from many steps ago. Someone changed the file since.</dd>
+        <dt>Detect</dt><dd>Edit preconditions fail. Diffs touch lines the model never saw.</dd>
+        <dt>Mitigate</dt><dd>Compare-and-swap edits. Re-read before writing. Record when each observation was made.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>State that lives only in the context</h3>
+      <dl>
+        <dt>Why</dt><dd>The plan exists only as old messages. Compaction or trimming removes them, and the agent loses the plan.</dd>
+        <dt>Detect</dt><dd>Behavior changes right after a compaction.</dd>
+        <dt>Mitigate</dt><dd>Keep task state in runtime state, and render it into each context.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Stale evidence</h3>
+      <dl>
+        <dt>Why</dt><dd>"Tests passed" was true at step 6. The model edited again at step 8.</dd>
+        <dt>Detect</dt><dd>The done check passes, but CI fails.</dd>
+        <dt>Mitigate</dt><dd>Tie each piece of evidence to the step that produced it. Expire it on every change.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Showing the model everything</h3>
+      <dl>
+        <dt>Why</dt><dd>The runtime dumps the whole state object into the prompt: internal flags, raw logs, every field.</dd>
+        <dt>Detect</dt><dd>The context grows with fields the model never uses.</dd>
+        <dt>Mitigate</dt><dd>Render a short view for the model. Keep control fields in code.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Lost on a crash</h3>
+      <dl>
+        <dt>Why</dt><dd>Run state lives only in process memory.</dd>
+        <dt>Detect</dt><dd>Kill the process mid-run and try to resume.</dd>
+        <dt>Mitigate</dt><dd>Save the log and a checkpoint after every step.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>What state exists, and which copy is the truth for each fact.</li>
+          <li>Which fields the model sees, which it gets as references, and which it never sees.</li>
+          <li>What must persist so a run can resume.</li>
+          <li>When evidence goes stale.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The state schema and its serialization.</li>
+          <li>Reducers that apply tool results to state.</li>
+          <li>Session logs and checkpoint storage.</li>
+          <li>Rendering state into sections of the context.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">What is state in an agent, and who holds it? (Q6)</p>
+      <details class="answer"><summary>Answer</summary><p>Everything the system tracks across steps: the conversation, runtime variables such as step counts, plans, and approvals, the world the agent acts on, and whatever it saves to resume. The runtime and its stores hold it, and the world holds itself. The model holds none of it.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">How are state and memory different? (Q8)</p>
+      <details class="answer"><summary>Answer</summary><p>State serves the current run and ends with it. Memory is information chosen and curated for future runs, with a way to retrieve it. They overlap: a saved session is state, and it acts as memory when a later run searches it.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">The model's final message says "all tests pass". What should the runtime check before it agrees?</p>
+      <ol class="options">
+        <li>Nothing. The message is clear.</li>
+        <li data-correct>The last test result in state, and whether that run came after the last edit</li>
+        <li>A summary of the conversation</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>The message is a claim. The evidence is the recorded test run, and it only counts if no edit came after it.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">What does the model know at a given moment, and what is context? (Q4, Q5)</p>
+      <details class="answer"><summary>Answer</summary><p>Its training, plus the context of this call. The context is a view of state that the runtime built for this one call. Anything else the agent holds must be put into that view, or fetched with a tool.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>There are five kinds of state: conversation, context, runtime state, world state, and persistent state.</li>
+      <li>Context is a view of state, rebuilt for every call. It is never the source of truth.</li>
+      <li>The runtime owns state. The model changes it only through tool calls the runtime applies.</li>
+      <li>The world is the truth for world facts. Re-read before writing, and expire evidence when things change.</li>
+      <li>Show the model what changes its next decision. Keep control, enforcement, and secrets in code.</li>
+      <li>State serves this run. Memory is what you keep for later runs.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

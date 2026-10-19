@@ -104,6 +104,14 @@
     if state.user_cancelled:               return "stopped by user"
     return None                                 # keep looping</code></pre>
     <p>Notice the first branch. "The model replied without tool calls" leads to a check, not straight to success. That is the propose, stop, verify split from <a href="00-llm-vs-agent.html#finished">chapter 0</a>, written as code.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0) runs two nested loops. The inner one continues while there are tool calls or queued steering messages. The outer one restarts only for follow-up messages. There is no turn cap. If a reply was cut off at the output limit, its tool calls are failed rather than run, because their arguments may be truncated.</li>
+        <li><strong>Deep Agents</strong> (0.7.28) uses LangChain's agent graph. A run ends when a reply has no tool calls, with a recursion limit of 9,999 steps. An optional beta middleware asks a grader to score the transcript when the model tries to stop. Its feedback goes back into the loop until the grader is satisfied.</li>
+        <li><strong>Hermes</strong> (0.22.2) can push a plain-text reply back into the loop with "stop gates". One nudges the model when it announces an action but calls no tool. The step cap is unlimited by default. A 600-second no-progress watchdog and repeat-failure guards stop runaways instead.</li>
+      </ul>
+    </aside>
   </section>
 
   <section id="vocabulary">

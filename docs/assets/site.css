@@ -156,6 +156,11 @@ strong { font-weight: 650; }
 }
 .tb-btn:hover { color: var(--text); border-color: var(--border-strong); }
 .menu-btn { display: none; }
+@media (max-width: 640px) {
+  .topbar { gap: .6rem; padding: 0 .7rem; }
+  .topbar .map-link, .tb-progress { display: none; }
+  .brand { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
 
 /* Sidebar (injected) */
 .sidebar {
@@ -361,7 +366,7 @@ table.compare tbody th { font-weight: 650; }
 .quiz-group { margin: 1.2rem 0; }
 .quiz-score { font-weight: 650; color: var(--text-2); }
 .quiz.sorter .q { margin-bottom: .45rem; }
-.quiz.sorter.js ol.options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.quiz.sorter.js ol.options { grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); }
 .quiz.sorter .opt-btn { justify-content: center; text-align: center; }
 .quiz.sorter .opt-letter { display: none; }
 .quiz.sorter .opt-mark { margin-left: .4rem; }
