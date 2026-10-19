@@ -64,7 +64,7 @@ export default function (sims, assert) {
   checkCommon(rej);
   assert.ok(!rej.some((st) => st.executed.some((e) => /DROP/.test(e))), 'a rejected call never executes');
   assert.ok(last(rej).executed.some((e) => /^archive_table/.test(e)));
-  assert.ok(rej.some((st) => st.kind === 'act' && /archive_table/.test(st.log.text) && /policy/i.test(st.say)),
+  assert.ok(rej.some((st) => st.kind === 'act' && /archive_table/.test(st.log.text) && /check/i.test(st.say)),
     'the replacement call is policy-checked before it runs');
   const rmsgs = last(rej).state.messages;
   const dropCall = rmsgs.find((m) => m.role === 'assistant' && m.call && m.call.name === 'run_sql');

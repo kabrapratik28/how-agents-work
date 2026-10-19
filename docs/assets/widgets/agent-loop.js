@@ -7,7 +7,7 @@
   AC.widgets = AC.widgets || {};
   AC.sims = AC.sims || {};
 
-  var DEFAULT_CTX = 'The runtime rebuilds the context from its state: instructions, tool definitions, and the full history so far.';
+  var DEFAULT_CTX = 'Your code builds the context again from its state: instructions, tool descriptions, and the full history so far.';
 
   var SCENARIOS = {
     answer: {
@@ -19,13 +19,13 @@
         { kind: 'tool', label: 'Tool definitions (3 tools)', tokens: 700 }
       ],
       state: {},
-      userSay: 'The runtime stores the message in its state. Nothing has gone to the model yet.',
+      userSay: 'Your code stores the message. Nothing has gone to the model yet.',
       script: [{
-        ctxSay: 'The runtime assembles the context: system prompt, tool definitions, and the message. This is everything the model will see.',
+        ctxSay: 'Your code puts together the context: the instructions, the tool descriptions, and the message. This is everything the model will see.',
         final: 'A process has its own memory space. Threads run inside a process and share its memory, so they are cheaper to create but need locks to avoid clashing.',
         finalTokens: 60,
-        say: 'The model reads the whole context and writes a reply. It requests no tool, so the reply proposes that the work is done.',
-        stopSay: 'No tool calls means nothing to execute. The runtime appends the reply and stops the loop. One model call, zero tool calls.'
+        say: 'The model reads the context and writes an answer. It asks for no tool, which means it thinks the work is done.',
+        stopSay: 'There is nothing to run, so your code saves the answer and stops the loop. That took one model call and no tools.'
       }]
     },
 
@@ -39,59 +39,59 @@
         { kind: 'state', label: 'Project instructions (AGENTS.md)', tokens: 400 }
       ],
       state: { last_test: 'unknown', files_read: [], files_changed: [] },
-      userSay: 'The runtime stores the request. The model has not seen it yet. Nothing happens until the runtime calls the model.',
+      userSay: 'Your code stores the request. The model has not seen it yet. Nothing happens until your code calls the model.',
       script: [
         {
-          ctxSay: 'The runtime assembles the first context: system prompt, tool definitions, project instructions, and the request.',
+          ctxSay: 'Your code puts together the first context: the instructions, the tool descriptions, the project notes, and the request.',
           call: { name: 'run_command', args: { cmd: 'pytest tests/test_auth.py -q' } },
-          say: 'The model chooses to reproduce the failure before guessing. Its output is a structured request to run a command. It runs nothing itself.',
-          actSay: 'The runtime checks the arguments against the tool schema and its policy (test commands are allowed). It runs the command in the sandbox. Exit code 1.',
+          say: 'The model wants to see the failure before guessing, so it asks to run the tests. This is only a request. The model cannot run anything.',
+          actSay: 'Your code checks the request against the tool description and its rules. Test commands are allowed, so it runs the tests. One test fails.',
           result: 'FAILED tests/test_auth.py::test_login_expired_token\nassert 200 == 401\n1 failed, 11 passed',
           resultShort: 'exit 1, 1 failed',
           resultTokens: 380,
-          updateSay: 'The output becomes a tool result tied to call_1 and joins the history. The model has not seen it yet.',
+          updateSay: 'Your code adds the test output to the history, labeled as the answer to request call_1. The model has not seen it yet.',
           update: { last_test: 'failed (1 of 12)' }
         },
         {
-          ctxSay: 'The runtime rebuilds the context from scratch. It now holds the first tool call and its result. The model does not remember call 1. It reads it again.',
+          ctxSay: 'Your code builds the context again from scratch. This time it includes the first request and the test output. The model does not remember call 1, so it has to read it again.',
           call: { name: 'read_file', args: { path: 'auth/session.py' } },
-          say: 'With the error in view, the model asks for the session code.',
-          actSay: 'A read-only tool inside the workspace, so the policy allows it. The runtime reads the file.',
+          say: 'Now that it can see the error, the model asks to read the session code.',
+          actSay: 'Reading a file inside the project is allowed, so your code reads it.',
           result: 'def is_valid(token, now):\n    return token.expires_at >= now - timedelta(minutes=10)\n...',
           resultShort: '120 lines',
           resultTokens: 1400,
-          updateSay: 'The file contents join the history as the result of call_2. Notice how fast the context grows.',
+          updateSay: 'The file goes into the history as the answer to call_2. Notice how fast the context is growing.',
           update: { files_read: ['auth/session.py'] }
         },
         {
-          ctxSay: 'Same pattern again. Each call re-sends everything so far. Prompt caching can make the repeated prefix cheaper. It does not make it smaller.',
+          ctxSay: 'Same pattern again: each call sends everything so far. Caching can make the repeated part cheaper, but not shorter.',
           call: { name: 'edit_file', args: { path: 'auth/session.py', old: 'token.expires_at >= now - timedelta(minutes=10)', new: 'token.expires_at > now' } },
-          say: 'The model forms a hypothesis: a leftover 10-minute grace period keeps expired tokens valid. The hypothesis is just text. The edit is a request.',
-          actSay: 'The runtime validates the edit: the old text must match exactly once. It applies the change and records which file changed.',
+          say: 'The model spots the bug: an old 10-minute grace period lets expired tokens through. It asks to edit that line.',
+          actSay: 'Your code makes sure the old text appears exactly once in the file, makes the change, and notes which file changed.',
           result: 'Replaced 1 occurrence in auth/session.py',
           resultShort: '1 replacement',
           resultTokens: 25,
-          updateSay: 'The confirmation joins the history as the result of call_3. The runtime also tracks the changed file in its own state.',
+          updateSay: 'The confirmation goes into the history as the answer to call_3. Your code also keeps its own list of changed files.',
           update: { files_changed: ['auth/session.py'] }
         },
         {
-          ctxSay: 'The context now includes the edit and its confirmation.',
+          ctxSay: 'The context now also includes the edit and its confirmation.',
           call: { name: 'run_command', args: { cmd: 'pytest tests/test_auth.py -q' } },
-          say: 'The model asks for the tests again. A claim of success needs evidence from the environment.',
-          actSay: 'Allowed, as before. The runtime runs the tests. Exit code 0.',
+          say: 'The model asks to run the tests again, to check that the fix works.',
+          actSay: 'Allowed, as before. Your code runs the tests, and this time they all pass.',
           result: '12 passed in 0.41s',
           resultShort: 'exit 0, 12 passed',
           resultTokens: 40,
-          updateSay: 'The passing output joins the history as the result of call_4.',
+          updateSay: 'The passing output goes into the history as the answer to call_4.',
           update: { last_test: 'passed (12 of 12)' }
         },
         {
-          ctxSay: 'One more rebuild, now with the passing test output.',
+          ctxSay: 'Your code builds the context one more time, now with the passing test output.',
           final: 'Fixed. auth/session.py kept a 10-minute grace period, so a token that expired a minute ago still counted as valid. The check is now token.expires_at > now. All 12 auth tests pass.',
           finalTokens: 70,
-          say: 'The model writes a summary and requests no tool. That is a proposal that the task is done, not proof.',
-          stopSay: 'The runtime stops the loop because the reply asks for nothing. Stopping is not the same as succeeding.',
-          verify: 'The runtime checks its done criteria against evidence in state: the last test run passed (12 of 12). Now the task counts as done.',
+          say: 'The model writes a summary and asks for no tool. That means it thinks the task is done. It is not proof.',
+          stopSay: 'The reply asks for nothing, so your code stops the loop. Stopping is not the same as succeeding.',
+          verify: 'Your code checks the evidence it saved: the last test run passed, 12 out of 12. Now the task counts as done.',
           verifyLog: 'last test run passed'
         }
       ]
@@ -106,52 +106,52 @@
         { kind: 'tool', label: 'Tool definitions: run_sql, archive_table, list_tables', tokens: 750 }
       ],
       state: { pending: null },
-      userSay: 'The runtime stores the request. This agent can touch a real database, so its runtime has a policy for risky calls.',
+      userSay: 'Your code stores the request. This agent can change a real database, so your code has rules for risky requests.',
       script: [{
-        ctxSay: 'The runtime assembles the context: system prompt, tool definitions, and the request.',
+        ctxSay: 'Your code puts together the context: the instructions, the tool descriptions, and the request.',
         call: { name: 'run_sql', args: { sql: 'DROP TABLE sessions_2023;' } },
-        say: 'The model proposes the most direct fix: drop the table. It is a request like any other.',
+        say: 'The model suggests the quickest fix: delete the whole table. It is a request like any other.',
         policy: { verdict: 'approval' },
-        blockSay: 'The tool dispatcher checks the SQL against its policy: DROP, DELETE, and TRUNCATE need approval. The rule lives in code, not in the prompt, so no wording gets past it. Nothing executes.',
-        checkpointSay: 'The runtime saves the run: history, step count, and the exact pending call. The process could exit now and resume tomorrow.',
-        choiceSay: 'The approval request is bound to this exact call: DROP TABLE sessions_2023. Approve it, or reject it with feedback.',
+        blockSay: 'Your code checks the SQL against its rules: DROP, DELETE, and TRUNCATE need a person to approve them. The rule lives in code, not in the prompt, so no wording can get past it. Nothing runs.',
+        checkpointSay: 'Your code saves the run to disk: the history, the step count, and the exact request that is waiting. The program could even shut down now and continue tomorrow.',
+        choiceSay: 'You are asked to approve this exact request: DROP TABLE sessions_2023. Approve it, or reject it and say why.',
         choices: [{ key: 'approve', label: 'Approve the DROP' }, { key: 'reject', label: 'Reject: archive it first' }],
         gate: {
           approve: {
-            resumeSay: 'The runtime reloads the checkpoint and confirms the approved call matches the pending one. Only then does it run the SQL.',
+            resumeSay: 'Your code loads the saved run and confirms that the approved request is the one that was waiting. Only then does it run the SQL.',
             result: 'DROP TABLE: done (41 GB freed). Approved by the user.',
             resultTokens: 20,
-            updateSay: 'The result, including who approved it, joins the history as the result of call_1.',
+            updateSay: 'The result, including who approved it, goes into the history as the answer to call_1.',
             then: [{
-              ctxSay: 'The runtime rebuilds the context, now with the approved result.',
+              ctxSay: 'Your code builds the context again, now with the result.',
               final: 'Dropped sessions_2023 after your approval. 41 GB freed.',
               finalTokens: 20,
-              say: 'The model reports what happened and requests nothing more.',
-              stopSay: 'No tool calls, so the runtime stops the loop.'
+              say: 'The model reports what happened and asks for nothing more.',
+              stopSay: 'Nothing more is requested, so your code stops the loop.'
             }]
           },
           reject: {
-            resumeSay: 'The runtime reloads the checkpoint. It does not run the SQL. It records the rejection as the result of call_1 so the model can react.',
+            resumeSay: 'Your code loads the saved run. It does not run the SQL. Instead it records your rejection as the answer to call_1, so the model can react to it.',
             result: 'Rejected by the user: do not drop it. Archive it to cold storage first.',
             resultTokens: 20,
-            updateSay: 'The rejection is now part of the history. To the model it looks like any other tool result.',
+            updateSay: 'Your rejection is now part of the history. To the model, it looks like any other tool result.',
             then: [
               {
-                ctxSay: 'The runtime rebuilds the context with the rejection in it.',
+                ctxSay: 'Your code builds the context again, with the rejection in it.',
                 call: { name: 'archive_table', args: { table: 'sessions_2023', to: 's3://archive/sessions_2023/' } },
-                say: 'The model reads the feedback and proposes a safer step: export the table to cold storage.',
-                actSay: 'A new call gets its own policy check. Exporting is not destructive, so the policy allows it without approval. The runtime runs it.',
+                say: 'The model reads your feedback and suggests a safer step: copy the table to cheap long-term storage first.',
+                actSay: 'A new request gets its own check. Copying deletes nothing, so the rules allow it without approval, and your code runs it.',
                 result: 'Archived 41 GB to s3://archive/sessions_2023/ (table still present)',
                 resultShort: 'archived 41 GB',
                 resultTokens: 30,
-                updateSay: 'The archive result joins the history as the result of call_2.'
+                updateSay: 'The copy result goes into the history as the answer to call_2.'
               },
               {
-                ctxSay: 'One more rebuild with the archive result.',
+                ctxSay: 'Your code builds the context one more time, with the copy result.',
                 final: 'I did not drop the table. I archived it to s3://archive/sessions_2023/. Once you have checked the archive, I can drop the table with your approval.',
                 finalTokens: 40,
-                say: 'The model summarizes and requests nothing more.',
-                stopSay: 'No tool calls, so the runtime stops the loop. The DROP never ran.'
+                say: 'The model sums up and asks for nothing more.',
+                stopSay: 'Nothing more is requested, so your code stops the loop. The DROP never ran.'
               }
             ]
           }
@@ -205,19 +205,19 @@
         var ctx = contextBlocks();
         c.ctxTokens = ctx.reduce(function (a, b) { return a + b.tokens; }, 0);
         push('context', ['context'], 'runtime', 'Build context', it.ctxSay || DEFAULT_CTX,
-          'Runtime: built context (' + ctx.length + ' blocks, ~' + fmt(c.ctxTokens) + ' tokens)', { context: ctx });
+          'Runtime: built the context (' + ctx.length + ' parts, about ' + fmt(c.ctxTokens) + ' tokens)', { context: ctx });
         c.modelCalls += 1;
         c.totalTokens += c.ctxTokens;
         st.step += 1;
 
         if (it.final) {
-          push('propose', ['model', 'decide'], 'model', 'Call model', it.say, 'Model: final answer, no tool calls', { context: ctx, decision: { final: it.final } });
+          push('propose', ['model', 'decide'], 'model', 'Call model', it.say, 'Model: final answer, no tool requested', { context: ctx, decision: { final: it.final } });
           st.messages.push({ role: 'assistant', text: it.final, tokens: it.finalTokens || 60 });
           st.status = it.verify ? 'stopped' : 'done';
-          push('stop', ['update'], 'runtime', 'Stop the loop', it.stopSay, 'Runtime: no tool calls, loop stops');
+          push('stop', ['update'], 'runtime', 'Stop the loop', it.stopSay, 'Runtime: nothing requested, so the loop stops');
           if (it.verify) {
             st.status = 'done';
-            push('verify', ['state'], 'runtime', 'Check the evidence', it.verify, 'Runtime: done criteria met (' + it.verifyLog + ')');
+            push('verify', ['state'], 'runtime', 'Check the evidence', it.verify, 'Runtime: success confirmed (' + it.verifyLog + ')');
           }
           return;
         }
@@ -228,15 +228,15 @@
         st.messages.push({ role: 'assistant', call: call, text: sig(call), tokens: 40 });
 
         if (it.policy && it.policy.verdict === 'approval') {
-          push('blocked', ['act'], 'runtime', 'Policy check blocks the call', it.blockSay, 'Runtime: ' + call.name + ' blocked, approval required');
+          push('blocked', ['act'], 'runtime', 'A rule blocks the request', it.blockSay, 'Runtime: blocked ' + call.name + ', approval needed');
           st.status = 'waiting_for_approval';
           st.pending = { id: call.id, name: call.name, args: clone(call.args) };
-          push('checkpoint', ['update'], 'runtime', 'Checkpoint and pause', it.checkpointSay, 'Runtime: checkpoint saved, ' + call.id + ' pending');
+          push('checkpoint', ['update'], 'runtime', 'Save and wait', it.checkpointSay, 'Runtime: saved the run, ' + call.id + ' is waiting');
           var decided = choices.gate && it.gate[choices.gate] ? choices.gate : null;
           var label = decided ? it.choices.filter(function (o) { return o.key === decided; })[0].label : '';
-          push('choice', ['act'], 'human', 'Human decides',
+          push('choice', ['act'], 'human', 'A person decides',
             decided ? it.choiceSay + ' You chose: ' + label + '.' : it.choiceSay,
-            decided ? 'Human: ' + label : 'Human: approval requested for ' + call.id,
+            decided ? 'Human: ' + label : 'Human: asked to approve ' + call.id,
             { choice: it.choices, chosen: decided });
           if (!decided) return;
           var br = it.gate[decided];
@@ -245,28 +245,28 @@
             if (JSON.stringify(st.pending.args) !== JSON.stringify(call.args)) throw new Error('approved call differs from the pending call');
             executed.push(call.name + ': ' + argSummary(call.args));
             c.toolCalls += 1;
-            push('resume', ['act'], 'runtime', 'Resume and execute', br.resumeSay, 'Runtime: ran approved ' + call.id);
+            push('resume', ['act'], 'runtime', 'Continue and run it', br.resumeSay, 'Runtime: ran the approved ' + call.id);
           } else {
-            push('resume', ['act'], 'runtime', 'Resume with the rejection', br.resumeSay, 'Runtime: ' + call.id + ' rejected, not executed');
+            push('resume', ['act'], 'runtime', 'Continue without running it', br.resumeSay, 'Runtime: ' + call.id + ' rejected, did not run it');
           }
           st.pending = null;
           st.messages.push({ role: 'tool', tool_call_id: call.id, text: br.result, tokens: br.resultTokens || 20 });
-          push('update', ['update'], 'runtime', 'Add observation', br.updateSay, 'Runtime: appended result of ' + call.id);
+          push('update', ['update'], 'runtime', 'Add the result to the history', br.updateSay, 'Runtime: added the result of ' + call.id + ' to the history');
           run(br.then);
           return;
         }
 
         executed.push(call.name + ': ' + argSummary(call.args));
         c.toolCalls += 1;
-        push('act', ['act'], 'runtime', 'Validate and execute', it.actSay, 'Runtime: ran ' + call.name + ' → ' + it.resultShort);
+        push('act', ['act'], 'runtime', 'Check and run the tool', it.actSay, 'Runtime: ran ' + call.name + ' → ' + it.resultShort);
         st.messages.push({ role: 'tool', tool_call_id: call.id, text: it.result, tokens: it.resultTokens });
         if (it.update) Object.keys(it.update).forEach(function (k) { st[k] = clone(it.update[k]); });
-        push('update', ['update'], 'runtime', 'Add observation', it.updateSay, 'Runtime: appended result of ' + call.id);
+        push('update', ['update'], 'runtime', 'Add the result to the history', it.updateSay, 'Runtime: added the result of ' + call.id + ' to the history');
       }
     }
 
     st.messages.push({ role: 'user', text: sc.user, tokens: sc.userTokens });
-    push('user', ['state'], 'user', 'User message arrives', sc.userSay, 'User: ' + sc.user);
+    push('user', ['state'], 'user', 'The user sends a message', sc.userSay, 'User: ' + sc.user);
     run(sc.script);
     return steps;
   }
@@ -279,7 +279,7 @@
   var ACTOR = { runtime: 'Runtime', model: 'Model', user: 'User', human: 'Human', tool: 'Tool' };
 
   function stateRows(st) {
-    var rows = [['status', st.status], ['step', st.step + ' of ' + st.max_steps + ' max']];
+    var rows = [['status', st.status.replace(/_/g, ' ')], ['step', st.step + ' (limit ' + st.max_steps + ')']];
     var roles = { user: 0, assistant: 0, tool: 0 };
     st.messages.forEach(function (m) { roles[m.role] += 1; });
     rows.push(['messages', st.messages.length + ' (user ' + roles.user + ', assistant ' + roles.assistant + ', tool ' + roles.tool + ')']);
@@ -306,7 +306,7 @@
 
     var title = root.getAttribute('data-title') || 'The agent loop, step by step';
     var frame = h('div', { class: 'w-frame' });
-    frame.appendChild(h('div', { class: 'w-head' }, h('p', { class: 'w-title', text: title }), h('p', { class: 'w-sub', text: 'Token counts are illustrative.' })));
+    frame.appendChild(h('div', { class: 'w-head' }, h('p', { class: 'w-title', text: title }), h('p', { class: 'w-sub', text: 'Press Next to move one step. Token counts are made up but realistic.' })));
     var body = h('div', { class: 'w-body' });
     frame.appendChild(body);
 
@@ -345,7 +345,7 @@
     top.appendChild(loopBox);
     body.appendChild(top);
 
-    var counters = h('div', { class: 'w-counters', 'aria-label': 'Counters' });
+    var counters = h('div', { class: 'al-stats', 'aria-label': 'Counters' });
     body.appendChild(counters);
 
     var statePanel = h('div', { class: 'w-panel al-panel' });
@@ -366,7 +366,7 @@
         h('span', { class: 'w-step-title', text: s.title + '. ' }), s.say);
       narration.appendChild(head);
       if (s.decision) {
-        var out = s.decision.call ? 'Output: tool call ' + s.decision.call.id + ' ' + sig(s.decision.call) : 'Output: final answer, no tool calls';
+        var out = s.decision.call ? 'The model asks for ' + sig(s.decision.call) + ' (request ' + s.decision.call.id + ')' : 'Final answer. No tool requested.';
         narration.appendChild(h('p', { class: 'al-decision', text: out }));
       }
       if (s.choice) {
@@ -384,14 +384,13 @@
       }
 
       counters.textContent = '';
-      [['Model calls', s.counters.modelCalls], ['Tool calls run', s.counters.toolCalls],
-        ['Context this call', s.context ? '~' + fmt(s.counters.ctxTokens) + ' tokens' : 'none'],
-        ['Input tokens so far', '~' + fmt(s.counters.totalTokens)]].forEach(function (c) {
-        counters.appendChild(h('span', { class: 'w-counter', text: c[0] + ': ' + c[1] }));
+      [['Model calls', s.counters.modelCalls], ['Tools run', s.counters.toolCalls],
+        ['Tokens sent so far, all calls', fmt(s.counters.totalTokens)]].forEach(function (c) {
+        counters.appendChild(h('span', { class: 'al-stat' }, h('span', { class: 'al-stat-num', text: String(c[1]) }), h('span', { class: 'al-stat-label', text: c[0] })));
       });
 
       statePanel.textContent = '';
-      statePanel.appendChild(h('p', { class: 'w-panel-title', text: 'Runtime state' }));
+      statePanel.appendChild(h('p', { class: 'w-panel-title', text: 'What your code remembers' }));
       var dl = h('dl', { class: 'w-kv' });
       var prevRows = prev ? stateRows(prev.state) : [];
       stateRows(s.state).forEach(function (r) {
@@ -400,14 +399,14 @@
         dl.appendChild(h('dt', { text: r[0] }));
         dl.appendChild(h('dd', { class: changed ? 'changed' : null, text: r[1] }));
       });
-      dl.appendChild(h('dt', { text: 'actions run' }));
+      dl.appendChild(h('dt', { text: 'tools run' }));
       dl.appendChild(h('dd', { text: s.executed.length ? s.executed.join(' | ') : 'none' }));
       statePanel.appendChild(dl);
 
       ctxPanel.textContent = '';
-      ctxPanel.appendChild(h('p', { class: 'w-panel-title', text: 'Context for this call' }));
+      ctxPanel.appendChild(h('p', { class: 'w-panel-title', text: 'What the model sees right now' }));
       if (s.context) {
-        ctxPanel.appendChild(h('p', { class: 'al-ctx-total', text: '~' + fmt(s.counters.ctxTokens) + ' tokens sent' }));
+        ctxPanel.appendChild(h('p', { class: 'al-ctx-total', text: 'About ' + fmt(s.counters.ctxTokens) + ' tokens sent in this call' }));
         var ol = h('ol', { class: 'al-ctx-list' });
         s.context.forEach(function (b) {
           ol.appendChild(h('li', null,
@@ -417,11 +416,11 @@
         });
         ctxPanel.appendChild(ol);
       } else {
-        ctxPanel.appendChild(h('p', { class: 'al-idle', text: 'No inference is running. Task state stays in the runtime. On the next call the runtime rebuilds the context and sends all of it again.' }));
+        ctxPanel.appendChild(h('p', { class: 'al-idle', text: 'Nothing. The model is not running right now. Your code keeps the state, and it will send everything again on the next call.' }));
       }
 
       logPanel.textContent = '';
-      logPanel.appendChild(h('p', { class: 'w-panel-title', text: 'Event log' }));
+      logPanel.appendChild(h('p', { class: 'w-panel-title', text: 'What happened so far' }));
       var log = h('ol', { class: 'w-log' });
       for (var k = 0; k <= i; k++) {
         var e = steps[k].log;

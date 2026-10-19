@@ -27,7 +27,13 @@ BANNED_WORDS = [
     r"foster(?:s|ed|ing)?", r"navigat(?:e|es|ed|ing)", r"load-bearing", r"spines?", r"structural(?:ly)?",
 ]
 BANNED_RE = re.compile(r"\b(" + "|".join(BANNED_WORDS) + r")\b", re.I)
-BANNED_PHRASES = [r"it'?s important to note", r"it is important to note", r"in today'?s fast-paced world"]
+BANNED_PHRASES = [r"it'?s important to note", r"it is important to note", r"in today'?s fast-paced world",
+                  # owner rules: no filler, no hype
+                  r"here'?s the thing", r"here is the thing", r"\blet['’]s\b", r"\blet us\b", r"it turns out",
+                  r"\bthree details matter", r"\bthis matters because", r"\bin this chapter,? we\b",
+                  r"\bpowerful\b", r"\bcrucial\b", r"\bessential(?:ly)?\b", r"\bmagic(?:al)?\b",
+                  r"game[- ]chang", r"\bsimply\b", r"\bkey (?:insight|idea|takeaway|point)s?\b",
+                  r"\bdive (?:in|into|deep)\b", r"\bunlock", r"\bsupercharg", r"\bthe bottom line\b"]
 PHRASE_RE = re.compile("|".join(BANNED_PHRASES), re.I)
 
 CLOSING = ["running-example", "design-checkpoint", "what-goes-wrong", "you-decide", "check-yourself", "takeaways", "going-deeper"]
@@ -208,6 +214,32 @@ SENT_SPLIT = re.compile(r"(?<=[.!?])[\"”’)]*\s+(?=[A-Z0-9\"“(])")
 WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'’\-./]*")
 
 
+def syllables(word):
+    w = word.lower().strip(".,;:!?'\"()")
+    if len(w) <= 3:
+        return 1
+    w = re.sub(r"(?:[^laeiouy]es|ed|[^laeiouy]e)$", "", w)
+    w = re.sub(r"^y", "", w)
+    return max(1, len(re.findall(r"[aeiouy]{1,2}", w)))
+
+
+def grade_level(blocks):
+    """Flesch-Kincaid grade over prose blocks (rough, for warnings only)."""
+    words = sents = syl = 0
+    for b in blocks:
+        b = re.sub(r"\s+", " ", b).strip()
+        for snt in SENT_SPLIT.split(b):
+            ws = WORD.findall(snt)
+            if not ws:
+                continue
+            sents += 1
+            words += len(ws)
+            syl += sum(syllables(w) for w in ws)
+    if not words:
+        return 0.0
+    return 0.39 * words / sents + 11.8 * syl / words - 15.59
+
+
 def prose_stats(blocks):
     sentences = []
     for b in blocks:
@@ -258,7 +290,10 @@ def check_page(path, chapters, strict_links):
 
     # prose metrics
     words, nsent, avg, long_share = prose_stats(p.blocks)
-    stats = "words=%d sentences=%d avg=%.1f long=%.1f%%" % (words, nsent, avg, long_share)
+    grade = grade_level(p.blocks)
+    stats = "words=%d sentences=%d avg=%.1f long=%.1f%% grade=%.1f" % (words, nsent, avg, long_share, grade)
+    if name not in PROSE_EXEMPT and nsent >= 20 and grade > 9.0:
+        warnings.append("reading grade %.1f is above 9: use plainer words or explain terms" % grade)
     if name not in PROSE_EXEMPT and nsent >= 20:
         if avg > 14.0 or long_share > 5.0:
             errors.append("prose too dense (%s); target avg<=13, long<=3%%" % stats)

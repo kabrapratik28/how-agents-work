@@ -8,7 +8,16 @@ An experienced software engineer. They want to design agent systems and direct a
 
 ## Voice
 
-- One idea per sentence. Aim for 13 words or fewer on average and few sentences over 30 words. `tools/check.py` warns above that and fails at an average over 14 or more than 5% long sentences. Keep a qualification if the claim is false without it.
+The owner's rule: no AI slop, and every sentence easy to understand. Easy matters more than short.
+
+- Use everyday words. Explain a technical term in plain words the first time it appears, with a small example.
+- Give the example first, then the general rule.
+- Connect ideas with "because", "so", "for example", and "but", so the reader sees the logic. Do not chop one thought into fragments.
+- Use active voice with a clear actor: "The runtime runs the command."
+- No slogans or clever one-liners ("The model proposes, the runtime disposes"). No filler or announcements ("Here is the thing", "Let's look at", "Three details matter"). No hype words (powerful, crucial, essential, simply, magic, game-changing). `tools/check.py` flags the common ones.
+- Say each point once. Do not repeat it in the lede, the body, a callout, and the takeaways.
+- Keep chapters short: most 1,500 to 2,500 words. Cut anything that does not help someone design an agent.
+- One idea per sentence. Aim for 13 words or fewer on average and few sentences over 30 words. `tools/check.py` warns above that and fails at an average over 14 or more than 5% long sentences. It also warns when the reading grade goes above 9. Keep a qualification if the claim is false without it.
 - Plain words. Say it the way you would at a whiteboard with a colleague.
 - Concepts first. A framework appears only as an example of a general idea.
 - Reduce vague terms to primitives, every time one appears ("Memory reduces to storage, a write policy, retrieval, and context injection").
@@ -83,13 +92,13 @@ An experienced software engineer. They want to design agent systems and direct a
 
 1. Kicker, h1, lede, loop map.
 2. Body sections with worked examples, diagrams, and callouts. Put each widget right next to the concept it demonstrates.
-3. At least one "What does this reduce to?" callout (more when several vague terms appear) and at least one "Systems analogy" callout with "Where it breaks".
-4. `#running-example`: what this chapter adds to Patch. 3-6 sentences plus a tiny diff of state or pseudocode.
+3. One "What does this reduce to?" callout per main idea (at least one) and one "Systems analogy" callout with "Where it breaks". "How real systems do it" only when it teaches a mechanism, at most 2 per chapter.
+4. `#running-example`: what this chapter adds to Patch. 2-4 sentences plus a tiny diff of state or pseudocode.
 5. `#design-checkpoint` in chapters 04, 09, 11, 14, 16 only (spec in `notes/checkpoints.md`).
-6. `#what-goes-wrong`: 3-6 failure cards (why, detect, mitigate).
+6. `#what-goes-wrong`: 2-3 failure cards (why it happens, how to spot it, what to do).
 7. `#you-decide`: "Decide yourself" and "Delegate to AI".
-8. `#check-yourself`: 3-5 questions. Answers collapsed, never inline. Tag questions that match the course's 31 questions, for example "(Q12)".
-9. `#takeaways`: 3-6 bullets.
+8. `#check-yourself`: 3 questions. Answers collapsed, never inline. Tag questions that match the course's 31 questions, for example "(Q12)".
+9. `#takeaways`: 3 bullets.
 10. `#going-deeper`: 1-4 links from `notes/research/sources.md`. Optional.
 
 Exceptions (encoded in check.py): 15 (a failure catalogue), 17 and 17b (survey), 20 (exercises), 21 (brief), questions, glossary.
@@ -196,9 +205,9 @@ Failure card (in `#what-goes-wrong`, or as the body of chapter 15):
 <div class="failure" id="infinite-loops">
   <h3>Infinite loops</h3>
   <dl>
-    <dt>Why</dt><dd>...</dd>
-    <dt>Detect</dt><dd>...</dd>
-    <dt>Mitigate</dt><dd>...</dd>
+    <dt>Why it happens</dt><dd>...</dd>
+    <dt>How to spot it</dt><dd>...</dd>
+    <dt>What to do</dt><dd>...</dd>
   </dl>
 </div>
 ```

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The agent loop · How AI Agents Work</title>
-<meta name="description" content="Observe, decide, act, repeat. What each step is in real systems, how a run ends, and the main loop designs.">
+<meta name="description" content="Every agent repeats one cycle: build the context, call the model, do what it asked, record the result, and decide whether to go again.">
 <link rel="stylesheet" href="assets/site.css">
 <link rel="stylesheet" href="assets/widgets/agent-loop.css">
 <script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
@@ -15,142 +15,141 @@
   <header class="chapter-head">
     <p class="kicker">Chapter 1 · The core loop</p>
     <h1>The agent loop</h1>
-    <p class="lede">Every agent runs the same cycle: build a context, call the model, carry out what it asked for, record the result, and decide whether to go again.</p>
+    <p class="lede">Every agent repeats one cycle: build the context, call the model, do what it asked, record the result, and decide whether to go again.</p>
     <div class="loop-map" data-focus="all"></div>
   </header>
 
   <section id="observe-decide-act">
     <h2>Observe, decide, act, repeat</h2>
-    <p>The classic description of an agent comes from robotics and control systems. Observe the world. Decide what to do. Act. Observe the result. Repeat.</p>
+    <p>Robots and control systems have long been described by one cycle: observe the world, decide what to do, act, then look at the result. LLM agents run the same cycle.</p>
     <div class="flow">
       <span class="node runtime">Observe</span><span class="arrow" aria-hidden="true">→</span>
-      <span class="node model">Think and decide</span><span class="arrow" aria-hidden="true">→</span>
+      <span class="node model">Decide</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node runtime">Act</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node runtime">Observe the result</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node runtime">Repeat</span>
     </div>
-    <p>For an LLM agent, each of those words maps to something concrete. Only one of them happens inside the model.</p>
+    <p>Here is what each word means in an agent:</p>
     <ul>
-      <li><strong>Observe</strong> means the runtime builds a context from its state, including the latest results.</li>
-      <li>Think and decide is one model call. The output is either a final answer or a structured request for an action.</li>
-      <li>Act means the runtime checks the request and executes it against a tool or the outside world.</li>
-      <li>Observe the result means the runtime records what happened as a new message in its state.</li>
-      <li>Repeat is a condition in a loop, written in ordinary code.</li>
+      <li><strong>Observe:</strong> your code puts the current situation into the context, including the result of the last action.</li>
+      <li><strong>Decide:</strong> the model reads the context and replies, either with an answer or with a request for an action.</li>
+      <li><strong>Act:</strong> your code checks the request and carries it out.</li>
+      <li><strong>Observe the result:</strong> your code adds what happened to the history.</li>
+      <li><strong>Repeat:</strong> a loop in your code goes around again.</li>
     </ul>
-    <p>Where does the thinking happen? Only inside the model call. Many models now produce reasoning tokens before their decision. Those tokens are part of the response to that one call. Between calls, nothing is thinking. The runtime is just running code.</p>
+    <p>Only the decide step happens inside the model. Some models write out their reasoning before they decide, but that reasoning is part of the same reply. Between calls, nothing is thinking. Your code is just running.</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
-      <p>The agent loop = <code>while</code> loop + context builder + one model call + a dispatcher that runs requested tools + an append to the history.</p>
+      <p>The agent loop = a <code>while</code> loop + build the context + one model call + run the requested tool + save the result.</p>
     </aside>
   </section>
 
   <section id="terminology">
-    <h2>The same loop in systems terms</h2>
-    <p>Framework docs use their own words for the same five pieces. This table maps them to what actually happens.</p>
+    <h2>The same loop in engineering terms</h2>
+    <p>Framework docs use many names for the same five pieces. This table says what each one actually is.</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>The five pieces of the loop</caption>
-        <thead><tr><th scope="col">Piece</th><th scope="col">Where it lives</th><th scope="col">What it is concretely</th></tr></thead>
+        <thead><tr><th scope="col">Piece</th><th scope="col">Where it happens</th><th scope="col">What it is</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Model invocation</th><td>Provider API call</td><td>Messages and tool definitions go in. A response comes out.</td></tr>
-          <tr><th scope="row">Action selection</th><td>The model's output</td><td>One or more tool calls with arguments, or a final answer</td></tr>
-          <tr><th scope="row">Tool execution</th><td>Runtime</td><td>Validate the arguments, check policy, run the function, capture output or errors</td></tr>
-          <tr><th scope="row">Observation</th><td>Runtime state</td><td>A tool result message, tied to the call id, appended to the history</td></tr>
-          <tr><th scope="row">Termination</th><td>Runtime</td><td>The conditions that end the loop</td></tr>
+          <tr><th scope="row">Model call</th><td>The provider's API</td><td>Messages and tool descriptions go in, and a reply comes out.</td></tr>
+          <tr><th scope="row">Choosing an action</th><td>The model's reply</td><td>One or more tool requests with arguments, or a final answer</td></tr>
+          <tr><th scope="row">Running the tool</th><td>Your code</td><td>Check the arguments and the rules, run the function, and capture the output or the error</td></tr>
+          <tr><th scope="row">Observation</th><td>Your code's state</td><td>A message with the tool's result, tagged with the request's id, added to the history</td></tr>
+          <tr><th scope="row">Stopping</th><td>Your code</td><td>The rules that end the loop</td></tr>
         </tbody>
       </table>
     </div>
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
-      <p>The loop is an event loop around a remote procedure. Each iteration sends a request to a stateless service, gets back a decision, and dispatches it. The runtime is the scheduler and the dispatcher.</p>
-      <p class="breaks"><strong>Where it breaks:</strong> a normal event loop dispatches known event types to known handlers. Here the "event" is a free-form decision written by a model. The dispatcher has to validate it every time.</p>
+      <p>The loop works like an event loop that calls a remote service. Each time around, it sends a request to a service that keeps no state, gets back a decision, and acts on it. Your code is both the scheduler and the dispatcher.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a normal event loop handles known event types with known handlers. Here the "event" is a decision written by a model in free form, so your code must check it every time before acting.</p>
     </aside>
   </section>
 
   <section id="step-through">
     <h2>Step through a run</h2>
-    <p>Step through three runs below. Watch three things at each step: what the runtime holds, what the model sees, and who acts. Pay attention to the context panel between model calls. It goes empty, because nothing is running there.</p>
+    <p>The widget below lets you step through three runs, one step at a time. At each step, watch who is acting, what your code remembers, and what the model sees. Notice that the model's view goes empty between calls, because the model is not running then.</p>
     <div class="widget" data-widget="agent-loop" data-start="coding">
-      <p class="noscript">Interactive widget. Without JavaScript, here is the run in text. The user asks Patch to fix a failing auth test. The runtime builds a context and calls the model. The model requests <code>run_command("pytest tests/test_auth.py")</code>. The runtime checks the request against the tool schema and its policy, runs it, and appends the failing output to the history. On the next call the runtime sends everything again, and the model requests <code>read_file("auth/session.py")</code>. After an edit and a passing test run, the model replies with no tool calls. The runtime stops the loop and checks the evidence: the last test run passed.</p>
+      <p class="noscript">Interactive widget. Without JavaScript, here is the run in words. The user asks Patch to fix a failing auth test. Your code builds the context and calls the model. The model asks to run the tests. Your code checks the request, runs the tests, and adds the failing output to the history. On the next call your code sends everything again, and the model asks to read <code>auth/session.py</code>. After an edit and a passing test run, the model replies without asking for a tool. Your code stops the loop and checks that the last test run passed.</p>
     </div>
-    <p>Three details from the widget matter for the rest of the course.</p>
+    <p>Three things in the widget come up again later in the course:</p>
     <ul>
-      <li>The context grows on every call. The runtime re-sends the whole history each time, because the model holds nothing between calls.</li>
-      <li>Every tool result carries the id of the call that requested it. That is how the model knows which result answers which request.</li>
-      <li>In the dangerous-action run, the policy check sits in the dispatcher. The model's request is blocked before anything runs. A person decides, and the run resumes from a saved checkpoint.</li>
+      <li>The context gets longer with every call, because your code sends the whole history each time.</li>
+      <li>Each tool result carries the id of the request it answers, so the model can match results to requests.</li>
+      <li>In the dangerous-action run, the rule that blocks the request lives in your code, not in the prompt. A person decides, and the run continues from a saved checkpoint.</li>
     </ul>
   </section>
 
   <section id="termination">
     <h2>How a run ends</h2>
-    <p>A loop without a good exit is a bug. A good agent runtime has several exits, and you choose them on purpose.</p>
+    <p>Say the agent edits a file and replies, "Done, the test passes now." Should the run end? Usually yes, but only after your code checks that the test really passes. A good agent has several ways to stop, and you choose them on purpose:</p>
     <ul>
-      <li><strong>Natural stop.</strong> The model replies without tool calls, or calls a finish tool. This is the model proposing that it is done.</li>
-      <li>Budgets. The runtime caps steps, tokens, money, or wall-clock time. Hitting a cap ends the run, usually with a report of where it got to.</li>
-      <li>Success evidence. A check passes, such as a green test suite. Some runtimes refuse to accept "done" until the check passes. They reply to the model with something like "Tests still fail. Continue or explain why not."</li>
-      <li>Error policy. Several tool errors in a row, or the same call repeated, ends the run or escalates to a person.</li>
-      <li>Human stop. The user interrupts, or rejects an action and ends the task.</li>
+      <li><strong>The model says it is done.</strong> It replies without asking for a tool, or it calls a special "finish" tool.</li>
+      <li><strong>A limit runs out.</strong> Your code caps the number of steps, the tokens, the cost, or the time.</li>
+      <li><strong>A check passes or fails.</strong> For example, your code runs the tests. Some agents refuse to accept "done" until the check passes, and reply to the model with "The tests still fail. Keep going or explain why."</li>
+      <li><strong>Errors pile up.</strong> The same tool keeps failing, or the model repeats the same request, so your code stops or asks a person.</li>
+      <li><strong>A person stops it.</strong> The user cancels, or rejects an action.</li>
     </ul>
-    <p>Here is what those exits look like as code. It is a sketch, not a framework API.</p>
+    <p>Here is a sketch of those rules in code:</p>
 <pre><code>def should_stop(state, reply):
-    if not reply.tool_calls:                    # the model proposes done
-        if state.done_check():                  # verify with evidence
+    if not reply.tool_calls:                  # the model says it is done
+        if state.success_check():             # confirm with evidence
             return "success"
-        state.add_note("The check failed: " + state.check_output)
-        return None                             # push back, keep going
-    if state.step >= state.max_steps:      return "step budget used up"
-    if state.cost >= state.max_cost:       return "cost budget used up"
-    if state.repeated_calls(window=3):     return "stuck: repeating itself"
-    if state.user_cancelled:               return "stopped by user"
-    return None                                 # keep looping</code></pre>
-    <p>Notice the first branch. "The model replied without tool calls" leads to a check, not straight to success. That is the propose, stop, verify split from <a href="00-llm-vs-agent.html#finished">chapter 0</a>, written as code.</p>
+        state.add_note("Check failed: " + state.check_output)
+        return None                           # send it back to work
+    if state.step >= state.max_steps:    return "step limit reached"
+    if state.cost >= state.max_cost:     return "cost limit reached"
+    if state.repeated_calls(window=3):   return "stuck: repeating itself"
+    if state.user_cancelled:             return "stopped by the user"
+    return None                               # keep going</code></pre>
+    <p>Notice the first branch. A reply without a tool request leads to a check, not straight to success. That is the split from <a href="00-llm-vs-agent.html#finished">chapter 0</a>: the model says it is done, your code stops, and a check confirms it.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
-        <li><strong>Pi</strong> (1.3.0) runs two nested loops. The inner one continues while there are tool calls or queued steering messages. The outer one restarts only for follow-up messages. There is no turn cap. If a reply was cut off at the output limit, its tool calls are failed rather than run, because their arguments may be truncated.</li>
-        <li><strong>Deep Agents</strong> (0.7.28) uses LangChain's agent graph. A run ends when a reply has no tool calls, with a recursion limit of 9,999 steps. An optional beta middleware asks a grader to score the transcript when the model tries to stop. Its feedback goes back into the loop until the grader is satisfied.</li>
-        <li><strong>Hermes</strong> (0.22.2) can push a plain-text reply back into the loop with "stop gates". One nudges the model when it announces an action but calls no tool. The step cap is unlimited by default. A 600-second no-progress watchdog and repeat-failure guards stop runaways instead.</li>
+        <li><strong>Pi</strong> (1.3.0) keeps going while there are tool requests or queued user messages, and has no step limit. If a reply was cut off at the output limit, it does not run that reply's tool requests, because their arguments may be incomplete.</li>
+        <li><strong>Hermes</strong> (0.22.2) can send a reply back to the model when the model announces an action but never requests a tool. It has no step limit by default. Instead, a watchdog stops a run that makes no progress for 600 seconds.</li>
       </ul>
     </aside>
   </section>
 
   <section id="vocabulary">
-    <h2>A small vocabulary</h2>
-    <p>These words get used loosely. Here is what they mean in this course.</p>
+    <h2>A few words, defined</h2>
+    <p>Docs use these words loosely. In this course they mean:</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>Loop vocabulary</caption>
         <thead><tr><th scope="col">Word</th><th scope="col">Meaning</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Turn</th><td>One user message and everything the agent does until it replies</td></tr>
-          <tr><th scope="row">Step (iteration)</th><td>One model call plus the handling of what it requested</td></tr>
-          <tr><th scope="row">Run</th><td>One execution of the loop for a task, from start to stop</td></tr>
-          <tr><th scope="row">Thread or session</th><td>A saved conversation that can span several runs</td></tr>
-          <tr><th scope="row">Trajectory or trace</th><td>The recorded sequence of contexts, outputs, tool calls, and results for a run</td></tr>
+          <tr><th scope="row">Turn</th><td>One message from the user and everything the agent does until it replies</td></tr>
+          <tr><th scope="row">Step</th><td>One model call plus the tools it asked for</td></tr>
+          <tr><th scope="row">Run</th><td>One task, from the first step to the stop</td></tr>
+          <tr><th scope="row">Session</th><td>A saved conversation that can span several runs</td></tr>
+          <tr><th scope="row">Trace</th><td>The record of a run: every context, reply, tool call, and result</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
   <section id="token-growth">
-    <h2>Worked example: why long runs get expensive</h2>
-    <p>Because the runtime re-sends the history, cost grows faster than the number of steps. Take a run where the fixed part of the context is 3,000 tokens, and each step adds 1,000 tokens of history. The numbers are illustrative.</p>
+    <h2>Example: why long runs get expensive</h2>
+    <p>Your code sends the whole history on every call, so the total cost grows faster than the number of steps. Suppose the fixed part of the context is 3,000 tokens, and each step adds 1,000 more.</p>
 <pre><code>call 1 sends   3,000 tokens
 call 2 sends   4,000 tokens
 call 3 sends   5,000 tokens
 ...
 call 20 sends 22,000 tokens
 
-total input over 20 calls:
+total over 20 calls:
   20 x 3,000 + 1,000 x (0 + 1 + ... + 19)
 = 60,000 + 190,000
 = 250,000 tokens</code></pre>
-    <p>Twenty steps, a quarter of a million input tokens. The total grows roughly with the square of the step count. Prompt caching lowers the price of the repeated prefix. It does not shrink the context, and the window still fills up. <a href="04-context.html">Chapter 4</a> covers what to do about that.</p>
+    <p>So twenty steps cost a quarter of a million tokens, and doubling the steps roughly quadruples the cost. Prompt caching makes the repeated part cheaper, but the context still fills up. <a href="04-context.html">Chapter 4</a> shows what to do about that.</p>
   </section>
 
   <section id="loop-designs">
-    <h2>Loop designs: a preview</h2>
-    <p>The basic loop has a few common variants. They differ in two things: who owns the control flow, and how work is split. This is a first look. <a href="14-architectures.html">Chapter 14</a> covers architectures in depth, once tools, state, planning, and subagents are in place.</p>
+    <h2>Other shapes of the loop</h2>
+    <p>The basic loop has a few common variations. They differ in who decides the next step and in how the work is split up. This is a first look; <a href="14-architectures.html">chapter 14</a> covers them in depth.</p>
 
     <h3 id="simple-loop">Simple loop</h3>
     <div class="flow">
@@ -160,43 +159,43 @@ total input over 20 calls:
       <span class="node tool">tool</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node model">LLM</span>
     </div>
-    <p>This is the loop from the widget, often called a ReAct loop. The model picks every step. Use it as the default. It handles a surprising range of tasks when the tools and the stopping rules are good.</p>
+    <p>This is the loop from the widget, often called a ReAct loop. The model picks every step. Start here. It handles a wide range of tasks when the tools and the stopping rules are good.</p>
 
     <h3 id="event-driven">Event-driven agent</h3>
-    <p>Here the loop runs once per event. A chat message arrives, a webhook fires, a schedule ticks, or a file changes. The agent is a handler. State is loaded at the start of each event and saved at the end.</p>
+    <p>Here the loop runs once for each event, such as a new chat message, a webhook, or a scheduled time. The agent loads its saved state, runs the loop, and saves the state again.</p>
 <pre><code>def on_event(event):
-    state = store.load(event.thread_id)    # restore what we knew
+    state = store.load(event.thread_id)    # what we knew before
     state.add(event)
     run_loop(state)                        # the same loop as before
-    store.save(state)                      # persist until the next event</code></pre>
-    <p>Use it for agents that live for days and react to the world. Support bots, inbox agents, and scheduled jobs fit this shape.</p>
+    store.save(state)                      # keep it for the next event</code></pre>
+    <p>This fits agents that live for days and react to the world, such as support bots, inbox assistants, and scheduled jobs.</p>
 
-    <h3 id="graph">Graph or state-machine agent</h3>
-    <p>Here you draw the process as nodes and edges. Some nodes call the model. Edges can be fixed, or conditional on code or on a model's choice. For example: research, then draft, then review, then either revise or publish.</p>
+    <h3 id="graph">Graph or state machine</h3>
+    <p>Here you draw the process as boxes and arrows. Some boxes call the model, and some arrows depend on a check or on the model's choice. For example: research, then draft, then review, then either revise or publish.</p>
     <div class="flow">
       <span class="node model">Research</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node model">Draft</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node model">Review</span><span class="arrow" aria-hidden="true">→</span>
       <span class="node runtime">Revise or publish?</span>
     </div>
-    <p>Use it when you know the shape of the process. It gives you checkpoints at node boundaries, human gates at known points, and runs you can audit.</p>
+    <p>This fits when you already know the shape of the process. You get a natural place to save progress after each box, and a natural place for a person to approve.</p>
 
     <h3 id="planner-executor">Planner and executor</h3>
-    <p>One model call writes a plan. A loop executes the steps. When a step fails, the planner revises the plan. Use it for long tasks with dependencies, or when a person should approve the plan before any action. <a href="06-planning.html">Chapter 6</a> covers when planning helps and when it only adds overhead.</p>
+    <p>One model call writes a plan, and a loop carries out the steps. If a step fails, the planner revises the plan. This helps with long tasks where steps depend on each other, or when a person should approve the plan first. <a href="06-planning.html">Chapter 6</a> covers when planning helps.</p>
 
     <h3 id="parent-subagents">Parent agent with subagents</h3>
-    <p>One of the parent's tools starts another agent loop. That loop has its own context and returns a short result. Use it for independent research in parallel, or to keep noisy exploration out of the parent's context. <a href="07-subagents.html">Chapter 7</a> covers the costs.</p>
+    <p>One of the parent's tools starts a second agent loop with a fresh context. The second loop does a focused job and returns a short result. This helps with independent research in parallel, and with keeping messy exploration out of the parent's context. <a href="07-subagents.html">Chapter 7</a> covers the costs.</p>
 
     <div class="table-wrap">
       <table class="compare">
-        <caption>Loop designs at a glance</caption>
-        <thead><tr><th scope="col">Design</th><th scope="col">Who picks the next step</th><th scope="col">Reach for it when</th></tr></thead>
+        <caption>The shapes at a glance</caption>
+        <thead><tr><th scope="col">Shape</th><th scope="col">Who picks the next step</th><th scope="col">Use it when</th></tr></thead>
         <tbody>
           <tr><th scope="row">Simple loop</th><td>The model</td><td>You are starting out. Most tasks.</td></tr>
-          <tr><th scope="row">Event-driven</th><td>Events start runs. The model picks steps inside each run.</td><td>The agent reacts to the world over days</td></tr>
-          <tr><th scope="row">Graph</th><td>Your graph, with model choices at some nodes or edges</td><td>The process shape is known and must be auditable</td></tr>
-          <tr><th scope="row">Planner and executor</th><td>A plan, revised by the model</td><td>Long tasks with dependencies, or plans that need approval</td></tr>
-          <tr><th scope="row">Parent with subagents</th><td>The parent model, which delegates parts</td><td>Independent subtasks, or exploration that would flood the context</td></tr>
+          <tr><th scope="row">Event-driven</th><td>Events start runs, and the model picks steps inside each run</td><td>The agent reacts to the world over days</td></tr>
+          <tr><th scope="row">Graph</th><td>Your graph, with the model choosing at some points</td><td>You know the process and need to audit it</td></tr>
+          <tr><th scope="row">Planner and executor</th><td>A plan that the model revises</td><td>Long tasks with dependencies, or plans that need approval</td></tr>
+          <tr><th scope="row">Subagents</th><td>The parent model, which hands off parts</td><td>Independent subtasks, or exploration that would flood the context</td></tr>
         </tbody>
       </table>
     </div>
@@ -204,22 +203,15 @@ total input over 20 calls:
 
   <section id="control-flow">
     <h2>Who decides what happens next?</h2>
-    <p>Every loop design answers one question differently: who decides the next step? At one end, code decides everything, and the model fills in blanks. That is a workflow. At the other end, the model decides everything inside a few hard limits. That is an open agent.</p>
-    <p>Good designs put the decision where the knowledge is. If you know the process, encode it in code or a graph. If the right next step depends on what the agent discovers, let the model choose. Debugging a failing test is like that. Hard limits, such as budgets, permissions, and approvals, always stay in code.</p>
-    <aside class="callout reduce">
-      <p class="callout-title">What does this reduce to?</p>
-      <p>"How agentic is it?" = how many control-flow decisions the model makes, compared with how many your code makes.</p>
-    </aside>
+    <p>Each shape gives a different answer to this question. At one end, your code decides every step and the model fills in blanks: that is a workflow. At the other end, the model decides every step within a few hard limits: that is an open agent.</p>
+    <p>Put each decision where the knowledge is. If you know the process, write it in code or as a graph. If the next step depends on what the agent discovers, as when debugging, let the model choose. Hard limits such as budgets, permissions, and approvals always stay in your code.</p>
   </section>
 
   <section id="running-example">
     <h2>Running example: Patch gets a loop</h2>
-    <p>Patch version 1 replaces you with the loop. It gets one tool, <code>run_command</code>, so it can run the tests itself. It stops when the model replies without tool calls, or after 30 steps.</p>
-<pre><code># Patch v0: you were the loop
-- suggestion = model([system, user(paste)])
-# Patch v1: the runtime is the loop
-+ answer = run_agent(task, tools=[run_command], max_steps=30)</code></pre>
-    <p>Patch can now try a fix, run the tests, read the failure, and try again. It can also loop forever on a bad idea. The step budget is its only protection so far.</p>
+    <p>In version 1, Patch replaces you with a loop. It gets one tool, <code>run_command</code>, so it can run the tests itself, and it stops when the model replies without a tool request or after 30 steps. Patch can now try a fix, run the tests, read the failure, and try again. It can also repeat a bad idea until the step limit stops it.</p>
+<pre><code>- suggestion = model([system, user(paste)])          # v0: you were the loop
++ answer = run_agent(task, tools=[run_command], max_steps=30)   # v1</code></pre>
   </section>
 
   <section id="what-goes-wrong">
@@ -227,33 +219,25 @@ total input over 20 calls:
     <div class="failure">
       <h3>The loop never ends</h3>
       <dl>
-        <dt>Why</dt><dd>Each result fails to change the model's next decision, so it repeats itself. Or nothing tells it what "done" looks like.</dd>
-        <dt>Detect</dt><dd>Count steps. Hash recent tool calls and arguments, and flag repeats.</dd>
-        <dt>Mitigate</dt><dd>Step and cost budgets, repeat detectors, and clear success criteria in the instructions. <a href="15-reliability.html">Chapter 15</a> goes deeper.</dd>
+        <dt>Why it happens</dt><dd>The tool results do not change what the model decides, so it repeats itself. Or nothing tells it what finished looks like.</dd>
+        <dt>How to spot it</dt><dd>Count the steps, and flag the same request with the same arguments appearing again.</dd>
+        <dt>What to do</dt><dd>Set step and cost limits, detect repeats, and state clearly what success looks like. <a href="15-reliability.html">Chapter 15</a> goes deeper.</dd>
       </dl>
     </div>
     <div class="failure">
       <h3>The loop ends too early</h3>
       <dl>
-        <dt>Why</dt><dd>The model replies without a tool call before the work is finished, and the runtime treats that as success.</dd>
-        <dt>Detect</dt><dd>Run the success check at every proposed stop.</dd>
-        <dt>Mitigate</dt><dd>Do not accept "done" without evidence. Send the failed check back to the model.</dd>
+        <dt>Why it happens</dt><dd>The model says it is done before the work is finished, and your code treats that as success.</dd>
+        <dt>How to spot it</dt><dd>Run the success check every time the model says it is done.</dd>
+        <dt>What to do</dt><dd>Accept "done" only with evidence. Send a failed check back to the model.</dd>
       </dl>
     </div>
     <div class="failure">
       <h3>Costs grow quietly</h3>
       <dl>
-        <dt>Why</dt><dd>Each call re-sends the history, so total tokens grow with the square of the steps.</dd>
-        <dt>Detect</dt><dd>Track tokens per call and per run, not only per request.</dd>
-        <dt>Mitigate</dt><dd>Budgets, trimming large tool outputs, compaction, and prompt caching.</dd>
-      </dl>
-    </div>
-    <div class="failure">
-      <h3>An agent where a workflow would do</h3>
-      <dl>
-        <dt>Why</dt><dd>An open loop is easy to build, so it gets used for processes whose steps are already known.</dd>
-        <dt>Detect</dt><dd>The traces show the same sequence of steps on almost every run.</dd>
-        <dt>Mitigate</dt><dd>Encode the known sequence in code, and keep model choices for the parts that vary.</dd>
+        <dt>Why it happens</dt><dd>Every call sends the whole history again, so long runs cost far more than short ones.</dd>
+        <dt>How to spot it</dt><dd>Track tokens for the whole run, not only for single calls.</dd>
+        <dt>What to do</dt><dd>Set budgets, trim large tool outputs, and shorten old history. Chapter 4 explains how.</dd>
       </dl>
     </div>
   </section>
@@ -264,19 +248,17 @@ total input over 20 calls:
       <div class="decide">
         <h3>Decide yourself</h3>
         <ul>
-          <li>The exits: what counts as success, and which budgets cap the run.</li>
-          <li>What happens at a proposed stop that fails its check.</li>
-          <li>Which loop design fits: simple, event-driven, graph, planner, or subagents.</li>
-          <li>Which decisions stay in code, and which go to the model.</li>
+          <li>How a run ends: what counts as success, and which limits apply.</li>
+          <li>What happens when the model says it is done but the check fails.</li>
+          <li>Which shape of loop fits the task.</li>
         </ul>
       </div>
       <div class="delegate">
         <h3>Delegate to AI</h3>
         <ul>
-          <li>The loop itself, step counters, and timers.</li>
-          <li>Repeat detection by hashing tool calls.</li>
-          <li>Token and cost accounting.</li>
-          <li>Trace logging for every step.</li>
+          <li>The loop itself, the step counter, and the timers.</li>
+          <li>Detecting repeated requests.</li>
+          <li>Counting tokens and cost, and logging every step.</li>
         </ul>
       </div>
     </div>
@@ -286,28 +268,19 @@ total input over 20 calls:
     <h2>Check yourself</h2>
     <div class="quiz">
       <p class="q">What is the agent loop, in one sentence? (Q2)</p>
-      <details class="answer"><summary>Answer</summary><p>A runtime loop that builds a context from state, calls the model, executes any tool calls it returns, appends the results to state, and repeats until a stop condition fires.</p></details>
+      <details class="answer"><summary>Answer</summary><p>A loop in your code that builds the context, calls the model, runs any tools the model asks for, adds the results to the history, and repeats until a stop rule fires.</p></details>
     </div>
     <div class="quiz">
-      <p class="q">The model replies without any tool calls. What should a careful runtime do?</p>
+      <p class="q">The model replies without asking for a tool. What should a careful agent do?</p>
       <ol class="options">
         <li>Report success, because the model is done</li>
-        <li data-correct>Stop the loop, or check the success criteria first and push back if they fail</li>
+        <li data-correct>Check the success criteria, and send the model back to work if they fail</li>
         <li>Call the model again with the same context</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>A reply without tool calls is a proposal. The runtime decides whether to stop. Success needs evidence.</p></details>
+      <details class="answer"><summary>Answer</summary><p>The reply only means the model thinks it is done. Your code decides whether to stop, and success needs evidence.</p></details>
     </div>
     <div class="quiz">
-      <p class="q">An agent answers customer emails as they arrive, over weeks. Which loop design fits best?</p>
-      <ol class="options">
-        <li>A single simple loop that never exits</li>
-        <li data-correct>An event-driven agent that loads state per email, runs a loop, and saves state</li>
-        <li>A planner that plans all future replies up front</li>
-      </ol>
-      <details class="answer"><summary>Answer</summary><p>Event-driven. Each email starts a run with restored state. Nothing needs to stay running between emails.</p></details>
-    </div>
-    <div class="quiz">
-      <p class="q">A run has a fixed context of 2,000 tokens and adds 500 tokens per step. Roughly how many input tokens do 10 steps cost in total?</p>
+      <p class="q">A run starts with 2,000 tokens of context and adds 500 tokens per step. Roughly how many tokens do 10 steps send in total?</p>
       <details class="answer"><summary>Answer</summary><p>10 x 2,000 + 500 x (0 + 1 + ... + 9) = 20,000 + 22,500 = 42,500 tokens. The last call alone sends 6,500.</p></details>
     </div>
   </section>
@@ -315,11 +288,9 @@ total input over 20 calls:
   <section id="takeaways">
     <h2>Takeaways</h2>
     <ul>
-      <li>Observe, decide, act maps onto: build context, call the model, execute, record. Only "decide" happens in the model.</li>
-      <li>Every tool result is tied to the id of the call that asked for it.</li>
-      <li>A run needs several exits: natural stop, budgets, success evidence, error rules, and human stop.</li>
-      <li>Re-sending history makes cost grow roughly with the square of the steps.</li>
-      <li>Loop designs differ in who picks the next step. Put the decision where the knowledge is.</li>
+      <li>Observe, decide, act means: build the context, call the model, run the tool, record the result. Only "decide" happens in the model.</li>
+      <li>Give every run several ways to stop: the model's "done" (checked against evidence), limits, error rules, and a person.</li>
+      <li>Because the history is sent on every call, cost grows much faster than the number of steps.</li>
     </ul>
   </section>
 </main>

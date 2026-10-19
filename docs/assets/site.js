@@ -292,6 +292,8 @@
       var live = AC.h('p', { class: 'visually-hidden', 'aria-live': 'polite' });
       q.appendChild(live);
       var details = q.querySelector('details.answer');
+      var sorter = q.classList.contains('sorter');
+      if (sorter && details) details.hidden = true;
       var opts = [];
       Array.prototype.slice.call(ol.children).forEach(function (li, idx) {
         var btn = AC.h('button', { type: 'button', class: 'opt-btn' });
@@ -311,9 +313,10 @@
             o.btn.setAttribute('aria-disabled', 'true');
             if (o.correct) { o.btn.classList.add('correct'); o.mark.textContent = o.btn === btn ? 'Correct' : 'Answer'; }
           });
-          if (!correct) { btn.classList.add('wrong'); mark.textContent = 'Not quite'; }
+          if (!correct) { btn.classList.add('wrong'); mark.textContent = sorter ? '✗' : 'Not quite'; }
+          if (sorter) opts.forEach(function (o) { if (o.correct) o.mark.textContent = '✓'; });
           live.textContent = correct ? 'Correct.' : 'Not quite. The correct answer is now marked.';
-          if (details) details.open = true;
+          if (details) { details.hidden = false; details.open = true; }
           updateGroupScore(q);
         });
       });
@@ -405,6 +408,35 @@
     run();
   }
 
+  /* ---------- on this page ---------- */
+
+  function buildToc() {
+    var main = document.querySelector('main.chapter');
+    if (!main) return;
+    var heads = main.querySelectorAll(':scope > section[id] > h2');
+    if (heads.length < 4) return;
+    var list = AC.h('ol');
+    var links = [];
+    heads.forEach(function (h2) {
+      var id = h2.parentElement.id;
+      var a = AC.h('a', { href: '#' + id, text: h2.textContent });
+      links.push({ a: a, el: h2.parentElement });
+      list.appendChild(AC.h('li', null, a));
+    });
+    document.body.appendChild(AC.h('nav', { class: 'toc', 'aria-label': 'On this page' }, AC.h('p', { class: 'toc-title', text: 'On this page' }), list));
+    document.body.classList.add('has-toc');
+    if (!('IntersectionObserver' in window)) return;
+    var current = null;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        links.forEach(function (l) { l.a.classList.toggle('is-current', l.el === e.target); });
+        current = e.target;
+      });
+    }, { rootMargin: '-15% 0px -70% 0px' });
+    links.forEach(function (l) { io.observe(l.el); });
+  }
+
   /* ---------- widgets ---------- */
 
   function mountWidgets() {
@@ -442,6 +474,7 @@
     enhanceGlossary();
     markHomeProgress();
     buildPager(file);
+    buildToc();
     paintProgress();
     mountWidgets();
   }
