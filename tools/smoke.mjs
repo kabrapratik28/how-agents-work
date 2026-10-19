@@ -87,7 +87,12 @@ async function interact(page, name) {
     for (let guard = 0; guard < 80; guard++) {
       if (await next.isEnabled()) { await next.click(); continue; }
       const choice = st.locator('.w-narration button').first();
-      if (await choice.count() && (await choice.getAttribute('aria-pressed')) !== 'true') { await choice.click(); continue; }
+      if (await choice.count() && (await choice.getAttribute('aria-pressed')) !== 'true') {
+        await choice.click();
+        const lost = await page.evaluate(() => document.activeElement === document.body || !document.activeElement);
+        if (lost) fail(name, `stepper ${s} lost keyboard focus after a choice`);
+        continue;
+      }
       break;
     }
     const counter = (await st.locator('.w-counter').textContent()) || '';
@@ -131,6 +136,20 @@ async function main() {
     }
     await pg.close();
     await ctx.close();
+
+    // Mobile menu: closed drawer is skipped by Tab, open drawer holds focus, Escape returns focus.
+    const mob = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true });
+    const mp = await mob.newPage();
+    await mp.goto(base + (pages.find((p) => p.startsWith('01-')) || pages[0]));
+    const closedInert = await mp.evaluate(() => document.getElementById('sidebar').inert);
+    if (!closedInert) fail('mobile', 'closed sidebar is not inert');
+    await mp.locator('.menu-btn').click();
+    const openState = await mp.evaluate(() => ({ side: document.getElementById('sidebar').inert, main: document.querySelector('main').inert, focusInSide: document.getElementById('sidebar').contains(document.activeElement) }));
+    if (openState.side || !openState.main || !openState.focusInSide) fail('mobile', 'open menu does not hold focus: ' + JSON.stringify(openState));
+    await mp.keyboard.press('Escape');
+    const back = await mp.evaluate(() => ({ open: document.body.classList.contains('nav-open'), onMenu: document.activeElement && document.activeElement.classList.contains('menu-btn'), main: document.querySelector('main').inert }));
+    if (back.open || !back.onMenu || back.main) fail('mobile', 'Escape did not close the menu and restore focus: ' + JSON.stringify(back));
+    await mob.close();
 
     // Storage blocked: everything still works.
     const blocked = await browser.newContext();

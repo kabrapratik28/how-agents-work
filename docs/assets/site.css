@@ -156,7 +156,7 @@ strong { font-weight: 650; }
   cursor: pointer;
 }
 .tb-btn:hover { color: var(--text); border-color: var(--border-strong); }
-.menu-btn { display: none; }
+.menu-btn, .sb-close { display: none; }
 @media (max-width: 640px) {
   .topbar { gap: .6rem; padding: 0 .7rem; }
   .topbar .map-link, .tb-progress { display: none; }
@@ -200,6 +200,7 @@ strong { font-weight: 650; }
 }
 @media (max-width: 1099.98px) {
   .menu-btn { display: inline-block; }
+  .sb-close { display: block; margin: .8rem 1.1rem 0; }
   .sidebar { transform: translateX(-102%); transition: transform .2s ease; box-shadow: var(--shadow); }
   body.nav-open .sidebar { transform: none; }
   body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 35; background: rgba(0, 0, 0, .35); }
@@ -283,14 +284,14 @@ blockquote { margin: 1.2rem 0; padding: .2rem 0 .2rem 1rem; border-left: 3px sol
   transition: opacity .2s, box-shadow .2s, transform .2s;
 }
 .lm-arrow { text-align: center; color: var(--text-3); font-size: .85rem; line-height: 1; user-select: none; }
-.lm-grid.has-focus .lm-node { opacity: .42; }
+.lm-grid.has-focus .lm-node:not(.is-focus) { color: var(--text-3); background: var(--bg-sunk); border-color: var(--border); }
 .lm-grid.has-focus .lm-node.is-focus { opacity: 1; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--c); }
 .lm-caption { margin: .55rem 0 0; font-size: .86rem; color: var(--text-3); }
 .lm-grid.big { max-width: 100%; gap: .45rem 0; grid-template-columns: minmax(0, 1fr) 1.8rem minmax(0, 1fr) 1.8rem minmax(0, 1fr); }
 .lm-grid.big .lm-node { font-size: .86rem; padding: .55rem .5rem; border-radius: 12px; }
 .lm-grid.big .lm-arrow { font-size: 1rem; }
 .lm-grid.big .lm-node.is-active { opacity: 1; transform: scale(1.04); box-shadow: 0 0 0 2px var(--bg-elev), 0 0 0 4px var(--c); }
-.lm-grid.big.has-active .lm-node:not(.is-active) { opacity: .45; }
+.lm-grid.big.has-active .lm-node:not(.is-active) { color: var(--text-3); background: var(--bg-sunk); border-color: var(--border); }
 
 /* Callouts */
 .callout {
@@ -573,5 +574,5 @@ main.home + .site-footer, .home ~ .site-footer { max-width: var(--wide-w); }
 .hero-visual .lm-node { font-size: .92rem; padding: .62rem .4rem; border-radius: 12px; }
 .hero-visual .lm-caption { margin-top: .9rem; }
 .hero-visual > p { margin: .8rem 0 0; font-size: .97rem; color: var(--text-2); }
-.lm-grid.cycling .lm-node { opacity: .5; }
+.lm-grid.cycling .lm-node:not(.is-active) { color: var(--text-3); background: var(--bg-sunk); border-color: var(--border); }
 .lm-grid.cycling .lm-node.is-active { opacity: 1; transform: scale(1.05); box-shadow: 0 0 0 2px var(--bg-elev), 0 0 0 4px var(--c); }

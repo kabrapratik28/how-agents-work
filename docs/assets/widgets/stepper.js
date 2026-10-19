@@ -47,11 +47,13 @@
       narration.appendChild(h('span', { class: 'visually-hidden', text: 'Step ' + (i + 1) + ' of ' + count() + '. ' }));
       opts.render(i, narration);
       paintControls();
-      if (hadFocus === next && next.disabled) {
-        var choice = narration.querySelector('button');
-        (choice || reset).focus();
+      var choice = narration.querySelector('button');
+      if (hadFocus === next && next.disabled) (choice || reset).focus();
+      else if (hadFocus === back && back.disabled) next.focus();
+      else if (hadFocus && hadFocus !== document.body && !document.contains(hadFocus)) {
+        // the focused control (for example a choice button) was re-rendered away
+        (!next.disabled ? next : (choice || reset)).focus();
       }
-      if (hadFocus === back && back.disabled) next.focus();
     }
 
     function stop() {

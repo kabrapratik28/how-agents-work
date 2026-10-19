@@ -44,6 +44,7 @@
   AC.store = (function () {
     var NS = 'haw:v1:';
     var mem = {};
+    var failed = {}; // keys whose last write to localStorage failed: read them from memory
     var ls = null;
     try {
       ls = window.localStorage;
@@ -53,7 +54,7 @@
     return {
       available: !!ls,
       get: function (key, fallback) {
-        if (ls) {
+        if (ls && !failed[key]) {
           try {
             var raw = ls.getItem(NS + key);
             if (raw != null) return JSON.parse(raw);
@@ -64,7 +65,8 @@
       set: function (key, value) {
         mem[key] = value;
         if (!ls) return false;
-        try { ls.setItem(NS + key, JSON.stringify(value)); return true; } catch (e) { return false; }
+        try { ls.setItem(NS + key, JSON.stringify(value)); delete failed[key]; return true; }
+        catch (e) { failed[key] = true; return false; }
       }
     };
   })();
@@ -131,13 +133,20 @@
     if (el.hasAttribute('data-animate') && !AC.reducedMotion()) {
       var nodes = grid.querySelectorAll('.lm-node');
       var n = 0;
+      // One trip around the loop, under five seconds, then it rests with every step shown.
       grid.classList.add('cycling');
       var tick = function () {
+        if (n === nodes.length) {
+          clearInterval(timer);
+          grid.classList.remove('cycling');
+          nodes.forEach(function (x) { x.classList.remove('is-active'); });
+          return;
+        }
         nodes.forEach(function (x, k) { x.classList.toggle('is-active', k === n); });
-        n = (n + 1) % nodes.length;
+        n += 1;
       };
+      var timer = setInterval(tick, 700);
       tick();
-      setInterval(tick, 1300);
     }
   }
 
@@ -226,9 +235,20 @@
     tb.appendChild(themeButton());
     var backdrop = AC.h('div', { class: 'nav-backdrop' });
     document.body.appendChild(backdrop);
+    var close = AC.h('button', { class: 'tb-btn sb-close', type: 'button', text: 'Close menu' });
+    sidebar.insertBefore(close, sidebar.firstChild);
+    var mobile = window.matchMedia ? window.matchMedia('(max-width: 1099.98px)') : { matches: false };
+    // On small screens the closed drawer is off screen: make it inert so Tab skips it.
+    // While it is open, the page behind it is inert, so focus stays in the drawer.
+    function paintInert() {
+      var open = document.body.classList.contains('nav-open');
+      sidebar.inert = mobile.matches && !open;
+      document.querySelectorAll('main, .site-footer, .topbar, .toc').forEach(function (el) { el.inert = mobile.matches && open; });
+    }
     function setOpen(open) {
       document.body.classList.toggle('nav-open', open);
       menu.setAttribute('aria-expanded', String(open));
+      paintInert();
       if (open) {
         var target = sidebar.querySelector('[aria-current="page"]') || sidebar.querySelector('a');
         if (target) target.focus();
@@ -237,10 +257,13 @@
       }
     }
     menu.addEventListener('click', function () { setOpen(!document.body.classList.contains('nav-open')); });
+    close.addEventListener('click', function () { setOpen(false); });
     backdrop.addEventListener('click', function () { setOpen(false); });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && document.body.classList.contains('nav-open')) setOpen(false);
     });
+    if (mobile.addEventListener) mobile.addEventListener('change', function () { if (!mobile.matches) document.body.classList.remove('nav-open'); paintInert(); });
+    AC.paintNavInert = paintInert;
   }
 
   function buildPager(file) {
@@ -559,6 +582,7 @@
     readingTime();
     readingProgress();
     footer();
+    if (AC.paintNavInert) AC.paintNavInert();
     paintProgress();
     mountWidgets();
   }

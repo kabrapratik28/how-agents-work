@@ -93,17 +93,16 @@
     </ul>
     <p>Here is a sketch of those rules in code:</p>
 <pre><code>def should_stop(state, reply):
+    if state.user_cancelled:             return "stopped by the user"
+    if state.step >= state.max_steps:    return "step limit reached"
+    if state.cost >= state.max_cost:     return "cost limit reached"
+    if state.repeated_calls(window=3):   return "stuck: repeating itself"
     if not reply.tool_calls:                  # the model says it is done
         if state.success_check():             # confirm with evidence
             return "success"
         state.add_note("Check failed: " + state.check_output)
-        return None                           # send it back to work
-    if state.step >= state.max_steps:    return "step limit reached"
-    if state.cost >= state.max_cost:     return "cost limit reached"
-    if state.repeated_calls(window=3):   return "stuck: repeating itself"
-    if state.user_cancelled:             return "stopped by the user"
     return None                               # keep going</code></pre>
-    <p>Notice the first branch. A reply without a tool request leads to a check, not straight to success. That is the split from <a href="00-llm-vs-agent.html#finished">chapter 0</a>: the model says it is done, your code stops, and a check confirms it.</p>
+    <p>Notice the order. The hard limits come first, so a model that keeps saying "done" while the check fails still cannot run forever. Then a reply without a tool request leads to a check, not straight to success. That is the split from <a href="00-llm-vs-agent.html#finished">chapter 0</a>: the model says it is done, your code stops, and a check confirms it.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>

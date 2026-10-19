@@ -37,7 +37,7 @@
 
     <article class="term" id="term-agents-md"><h3>AGENTS.md</h3>
       <p class="reduces">= a README for coding agents: build steps, test commands, and conventions, read into the context</p>
-      <p>When a repository has several, the file closest to the code being edited wins. <a href="09-coding-agents.html">Chapter 9</a></p></article>
+      <p>A repository can have several. When their instructions conflict, the file closest to the code being edited wins, and the rest still apply. <a href="09-coding-agents.html">Chapter 9</a></p></article>
 
     <article class="term" id="term-approval-gate"><h3>Approval gate</h3>
       <p class="reduces">= intercept a matching call + checkpoint + ask a person + resume with their decision</p>
@@ -229,15 +229,15 @@
 
     <article class="term" id="term-todo"><h3>Todo list</h3>
       <p class="reduces">= a list of tasks with statuses in runtime state, updated by a tool, often shown to the model each turn</p>
-      <p>One way to make a plan durable. <a href="06-planning.html#todo-state">Chapter 6</a></p></article>
+      <p>It keeps the plan where later steps can read it. Saved to disk, it also survives a restart. <a href="06-planning.html#todo-state">Chapter 6</a></p></article>
 
     <article class="term" id="term-tool"><h3>Tool</h3>
       <p class="reduces">= name + description + input schema + implementation + policy metadata</p>
       <p><a href="02-tools.html#what-is-a-tool">Chapter 2</a></p></article>
 
     <article class="term" id="term-tool-call"><h3>Tool call</h3>
-      <p class="reduces">= structured model output + runtime function dispatch</p>
-      <p>A request, not an execution. <a href="02-tools.html#flow">Chapter 2</a></p></article>
+      <p class="reduces">= a structured request from the model: tool name + arguments + call id</p>
+      <p>A request, not an execution. Your code decides whether to run it. <a href="02-tools.html#flow">Chapter 2</a></p></article>
 
     <article class="term" id="term-trifecta"><h3>Lethal trifecta</h3>
       <p class="reduces">= private data + untrusted content + a way to send data out</p>

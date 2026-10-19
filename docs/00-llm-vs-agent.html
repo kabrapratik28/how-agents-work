@@ -127,23 +127,7 @@ messages: [
 
   <section id="who-does-what">
     <h2>Who does what</h2>
-    <p>These are the questions people most often get wrong. The answers assume a typical agent, where your code runs the loop.</p>
-    <div class="table-wrap">
-      <table class="compare">
-        <caption>The model, the runtime, and the rest</caption>
-        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Does the model run tools?</th><td>No. It writes a request. Your code decides whether to run it, then runs it.</td></tr>
-          <tr><th scope="row">Does the model remember earlier calls?</th><td>No. Your code, or a provider that stores the conversation, sends the history again each time.</td></tr>
-          <tr><th scope="row">Who decides to call the model again?</th><td>Your loop. The usual rule is: if the reply asks for tools, run them and call again.</td></tr>
-          <tr><th scope="row">Who stores state?</th><td>Your runtime and its stores. Sometimes the provider stores the conversation.</td></tr>
-          <tr><th scope="row">Who runs shell commands?</th><td>Your code, inside whatever machine or container you gave it.</td></tr>
-          <tr><th scope="row">Who enforces permissions?</th><td>Your code and the environment around it, such as the operating system, containers, and network rules. Never the model alone.</td></tr>
-          <tr><th scope="row">Who decides the task is finished?</th><td>Three parts share this. The model says it is done, your code stops, and a check confirms it. See below.</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>Now try it yourself. For each job, pick who does it.</p>
+    <p>Try this before reading the answers. For each job, pick who does it in a typical agent, where your code runs the loop.</p>
     <div class="quiz-group">
       <p class="quiz-score" aria-live="polite">Pick an answer in each row.</p>
       <div class="quiz sorter">
@@ -196,6 +180,22 @@ messages: [
         <ol class="options"><li>Model</li><li data-correct>Runtime</li><li>Both</li></ol>
         <details class="answer"><summary>Why</summary><p>Runtime. It runs the checks, such as the tests. Another model can help judge, but your code decides what counts.</p></details>
       </div>
+    </div>
+    <p>Now the questions people most often get wrong, with their answers:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>The model, the runtime, and the rest</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">Answer</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Does the model run tools?</th><td>No. It writes a request. Your code decides whether to run it, then runs it.</td></tr>
+          <tr><th scope="row">Does the model remember earlier calls?</th><td>No. Your code, or a provider that stores the conversation, sends the history again each time.</td></tr>
+          <tr><th scope="row">Who decides to call the model again?</th><td>Your loop. The usual rule is: if the reply asks for tools, run them and call again.</td></tr>
+          <tr><th scope="row">Who stores state?</th><td>Your runtime and its stores. Sometimes the provider stores the conversation.</td></tr>
+          <tr><th scope="row">Who runs shell commands?</th><td>Your code, inside whatever machine or container you gave it.</td></tr>
+          <tr><th scope="row">Who enforces permissions?</th><td>Your code and the environment around it, such as the operating system, containers, and network rules. Never the model alone.</td></tr>
+          <tr><th scope="row">Who decides the task is finished?</th><td>Three parts share this. The model says it is done, your code stops, and a check confirms it. See below.</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
