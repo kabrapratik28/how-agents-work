@@ -91,7 +91,7 @@
   <section id="containers">
     <h2>Containers</h2>
     <p>For each task, Patch gets a fresh container. A container is a lightweight, isolated Linux system, built from an image that holds Python and the repo's dependencies. The container sees only the mounted repo and its own processes. When the task ends, your code deletes it, and anything the agent broke goes with it.</p>
-    <p>Containers start quickly, so one per task is practical. Their limit is that all containers on a machine share the host's kernel, the core of the operating system. A kernel bug, or a loose setting such as running the container in privileged mode, can let code inside reach the host. So a tightly configured container is strong containment, but it is not a separate machine.</p>
+    <p>Containers start quickly, so one per task is practical. Their limit is that standard containers on a machine share the host's kernel, the core of the operating system. A kernel bug, or a loose setting such as running the container in privileged mode, can let code inside reach the host. So a tightly configured container is strong containment, but it is not a separate machine.</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>A sandbox = the files it can see + the servers it can reach + the secrets inside it + the wall around it (process rules, a container, or a VM).</p>
@@ -118,6 +118,7 @@
       <li><strong>Allowlist.</strong> Only the listed hosts are reachable, such as the registry and the Git host. This is the usual choice for coding agents.</li>
       <li><strong>Allow all.</strong> Any server is reachable, so a stolen secret can go anywhere. This is often the default.</li>
     </ul>
+    <p>Anthropic's sandbox for Claude Code combines both kinds of isolation. Operating-system features (bubblewrap on Linux, Seatbelt on macOS) limit which files the agent can touch. A proxy outside the sandbox lets traffic reach only approved domains.</p>
     <p>A denylist, a list of blocked servers, stops only the bad servers you thought of. So an allowlist is safer. But as the threats section showed, an allowed server can still carry a secret out.</p>
   </section>
 
@@ -156,7 +157,7 @@
     <h2>Try it: which defense stops which attack</h2>
     <p>The widget starts with a prompt rule and nothing else, so most attacks succeed. Make these three changes one at a time, and predict each result before you look. Mount the home folder read-only. Limit outgoing traffic to the registry and github.com. Remove the long-lived keys from the sandbox.</p>
     <div class="widget" data-widget="sandbox">
-      <p class="noscript">Interactive widget. In words: a prompt rule helps only when the model cooperates. A command check never sees a package's install script, because that code runs inside an allowed command. A read-only home folder still lets the agent read and send <code>~/.aws</code>. Allowing github.com still lets a secret leave in a pull request. Removing long-lived keys blocks both credential attacks. Branch protection on the Git server blocks the force-push. A container limits a mistaken <code>rm -rf</code> to a throwaway copy, but does not prevent it.</p>
+      <p class="noscript">Interactive widget. In words: a read-only home folder still lets the agent read and send <code>~/.aws</code>. Allowing github.com still lets a secret leave in a pull request. Removing long-lived keys blocks both credential attacks. Branch protection on the Git server blocks the force-push. A command check never sees a package's install script, and a container limits a mistaken <code>rm -rf</code> without preventing it.</p>
     </div>
   </section>
 
@@ -175,7 +176,7 @@
       <dl>
         <dt>Why it happens</dt><dd>Blocking all traffic breaks package installs, or the container lacks a tool, so someone disables the sandbox to get work done.</dd>
         <dt>How to spot it</dt><dd>Look for runs with the sandbox off, or for broad exceptions such as "allow all servers".</dd>
-        <dt>What to do</dt><dd>Allow exactly what the work needs, such as the package registry, so the safe setup is also the easy one.</dd>
+        <dt>What to do</dt><dd>Allow exactly what the work needs, such as the package registry, so the safe setup is the easy one.</dd>
       </dl>
     </div>
     <div class="failure">
@@ -190,7 +191,7 @@
       <h3>A loosely configured container</h3>
       <dl>
         <dt>Why it happens</dt><dd>The container runs in privileged mode, or has the Docker socket mounted, which lets code inside control the host.</dd>
-        <dt>How to spot it</dt><dd>Review the container's settings: privileges, mounted sockets, and access to the host's network.</dd>
+        <dt>How to spot it</dt><dd>Review the container's privileges, mounted sockets, and network settings.</dd>
         <dt>What to do</dt><dd>Drop privileges, mount only the repo, and use a VM when the code is untrusted.</dd>
       </dl>
     </div>
@@ -245,6 +246,15 @@
       <li>Treat every action the model asks for as possibly wrong or manipulated, and design around what its process can reach.</li>
       <li>Use prompt rules and gates to guide and pause the agent. Use containment and other systems' rules for anything that must never happen.</li>
       <li>Keeping long-lived credentials out of the sandbox closes many leak paths with one change.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/claude-code-sandboxing">Beyond permission prompts: making Claude Code more secure and autonomous</a> (Anthropic, October 2025). A filesystem sandbox plus a network proxy, used in a real coding agent.</li>
+      <li><a href="https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/">The lethal trifecta for AI agents</a> (Simon Willison, June 2025). The original description of the three conditions for a leak.</li>
+      <li><a href="https://arxiv.org/abs/2506.08837">Design Patterns for Securing LLM Agents against Prompt Injections</a> (Beurer-Kellner, Tramèr, and others, 2025). Six designs that keep untrusted input from triggering consequential actions.</li>
     </ul>
   </section>
 </main>
