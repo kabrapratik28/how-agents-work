@@ -126,6 +126,23 @@ export default function (sims, assert) {
   // Every block belongs to a legend group, so the bar can be read in words.
   for (const r of configs) for (const b of r.blocks) assert.ok(['rules', 'extras', 'history', 'files', 'user'].includes(b.group), b.key);
 
+  // Without tool definitions the model cannot call any tool, so nothing is "one tool call away".
+  const noTools = run({ tools: 'none' });
+  assert.ok(!noTools.blocks.some((b) => b.key === 'tools'));
+  assert.ok(noTools.probes.every((p) => p.state !== 'tool'), 'no tools, no retrieval');
+  assert.equal(probe(noTools, 'suite').state, 'missing');
+  assert.equal(probe(noTools, 'callers').state, 'in', 'the helper report is still in view');
+  assert.equal(probe(run({ tools: 'none', subagent: false }), 'callers').state, 'missing');
+
+  // "What just changed": plain sentences about the size change and every answer that changed.
+  assert.match(s.describe(d, run({ subagent: false })), /helper agent/);
+  assert.match(s.describe(d, run({ subagent: false })), /Now one tool call away: the callers of is_valid\(\)\./);
+  assert.match(s.describe(d, run({ compacted: true, summary: 'careless' })), /careless[\s\S]*missing/);
+  assert.match(s.describe(d, run({ tools: 'none' })), /tool list[\s\S]*missing/);
+  assert.match(s.describe(d, run({ memory: false })), /900 tokens/);
+  assert.match(s.describe(d, run({ memory: false })), /Every answer stays the same/);
+  assert.match(s.describe(d, allTools), /does not fit/i);
+
   // Purity: build does not change its input.
   const input = cfg({ compacted: true });
   const snapshot = JSON.stringify(input);

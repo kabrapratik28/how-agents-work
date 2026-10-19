@@ -44,11 +44,11 @@
       keywords: ['migration', 'unique index', 'users.email'],
       vector: { 'legacy-mysql': 0.86, 'migrations': 0.79, 'ep-dupes': 0.77, 'ep-deploy': 0.52 },
       rerank: { 'ep-dupes': 0.92, 'migrations': 0.88, 'ep-deploy': 0.25, 'proc-deploy': 0.18 },
-      notes: {
-        candidates: 'The closest by meaning is a note about another service, which uses MySQL.',
-        rerank: 'The migrations rule is a structured fact that was found by meaning, so it is both kinds of memory at once.',
-        model: 'The model writes an Alembic migration and checks for duplicate emails first. It never sees the MySQL note, which would have pointed it at the wrong database.'
-      }
+      notice: {
+        candidates: 'The closest note by meaning is about another service, which uses MySQL.',
+        rerank: 'The migrations rule is a structured fact that was found by meaning, so it counts as two kinds of memory at once.'
+      },
+      outcome: 'The model writes an Alembic migration and checks for duplicate emails first, and it never sees the MySQL note.'
     },
     reset: {
       label: 'Password reset',
@@ -56,10 +56,10 @@
       keywords: ['password', 'reset', 'endpoint', 'email', 'token'],
       vector: { 'ep-reset': 0.84, 'conv-endpoints': 0.71, 'email-ses': 0.69, 'doc-login': 0.58 },
       rerank: { 'ep-reset': 0.94, 'email-ses': 0.83, 'conv-endpoints': 0.80, 'doc-login': 0.35, 'ep-dupes': 0.15 },
-      notes: {
-        rerank: 'The login-flow doc is on the same topic, but this task does not need it.',
-        model: 'The model now knows two rules it could not have guessed: reset tokens are single-use, and new endpoints need a rate limit. Because the email fact is out of date, it reads notify/email.py before using it.'
-      }
+      notice: {
+        rerank: 'The login-flow doc is on the same topic, but this task does not need it.'
+      },
+      outcome: 'The model follows two rules it could not have guessed, single-use reset tokens and a rate limit, and reads notify/email.py first because that fact is out of date.'
     },
     flaky: {
       label: 'Flaky login test',
@@ -67,10 +67,10 @@
       keywords: ['test_login_rate_limit', 'rate limit', 'login', 'ci'],
       vector: { 'doc-login': 0.81, 'prop-redis': 0.66, 'ep-flaky': 0.64, 'ep-reset': 0.42 },
       rerank: { 'ep-flaky': 0.91, 'doc-login': 0.30, 'conv-endpoints': 0.22, 'ep-reset': 0.10 },
-      notes: {
-        rerank: 'The login-flow doc was the closest by meaning, but it says nothing about flaky tests, so it scores low.',
-        model: 'The model gets a hint to check, not an answer: a similar test failed because of the clock. It still has to run test_login_rate_limit to confirm the cause.'
-      }
+      notice: {
+        rerank: 'The login-flow doc was the closest by meaning, but it says nothing about flaky tests, so it scored low.'
+      },
+      outcome: 'The model treats the old note as a hint and runs test_login_rate_limit to see whether the clock causes this failure too.'
     },
     deploy: {
       label: 'Deploy to staging',
@@ -78,10 +78,10 @@
       keywords: ['deploy', 'staging', 'main'],
       vector: { 'proc-deploy': 0.88, 'ep-deploy': 0.80, 'staging-url': 0.74, 'deploy-window': 0.70 },
       rerank: { 'proc-deploy': 0.95, 'staging-url': 0.82, 'deploy-window': 0.66, 'ep-deploy': 0.61 },
-      notes: {
-        rerank: 'The note about the failed May deploy is left out, but its lesson is already step 2 of the deploy steps.',
-        model: 'The model follows the deploy steps and checks that today is an allowed day, instead of working the steps out again.'
-      }
+      notice: {
+        rerank: 'The failed-deploy note is left out, but its lesson is already step 2 of the deploy steps.'
+      },
+      outcome: 'The model follows the deploy steps and checks that today is an allowed day, instead of working the steps out again.'
     },
     oncall: {
       label: 'On-call rotation',
@@ -89,10 +89,10 @@
       keywords: ['on call', 'payments', 'week'],
       vector: { 'deploy-window': 0.24, 'conv-endpoints': 0.19, 'staging-url': 0.17, 'ep-deploy': 0.15 },
       rerank: { 'deploy-window': 0.08, 'conv-endpoints': 0.05, 'staging-url': 0.04, 'ep-deploy': 0.03 },
-      notes: {
-        candidates: 'Even the closest note scores only 0.24, because a search by meaning always returns something. The keyword match is "weekday", which is a false match.',
-        model: 'The context holds nothing about the rotation, so the model should say it does not know and offer to check the on-call schedule, instead of inventing a name.'
-      }
+      notice: {
+        candidates: 'Even the closest note scores only 0.24, because a search by meaning always returns something, and the one keyword match, "weekday", is a false match.'
+      },
+      outcome: 'With nothing about the rotation in its context, the model should say it does not know and offer to check the on-call schedule.'
     }
   };
 
@@ -110,9 +110,9 @@
   // The write path: what one run asked to remember, and the sources the runtime trusts per key.
   var PROPOSALS = [
     { id: 'p1', key: 'test.fast', value: 'make test-fast', text: 'Run make test-fast for quick auth checks. The full suite takes 12 minutes.', scope: 'project', source: 'commands run in this session', at: TODAY },
-    { id: 'p2', key: 'db.engine', value: 'MySQL', text: 'The project database is MySQL.', scope: 'project', source: 'read services/legacy-analytics/config.yml', at: TODAY, why: 'The claim came from another service\'s config.' },
+    { id: 'p2', key: 'db.engine', value: 'MySQL', text: 'The project database is MySQL.', scope: 'project', source: 'read services/legacy-analytics/config.yml', at: TODAY },
     { id: 'p3', key: 'python.version', value: 'Python 3.12', text: 'The API runs on Python 3.12.', scope: 'project', source: 'a CI log line', at: TODAY },
-    { id: 'p4', key: 'deploy.window', value: 'not on Fridays', text: 'Staging deploys are frozen on Fridays.', scope: 'project', source: 'user: "I think we freeze on Fridays?"', at: TODAY, why: 'the user was only guessing' },
+    { id: 'p4', key: 'deploy.window', value: 'not on Fridays', text: 'Staging deploys are frozen on Fridays.', scope: 'project', source: 'user: "I think we freeze on Fridays?"', at: TODAY },
     { id: 'p5', key: 'staging.db_password', text: 'Staging database password: ••••••••', scope: 'project', source: 'read .env.staging', at: TODAY, secret: true }
   ];
   var AUTHORITY = {
@@ -189,8 +189,6 @@
   var REASON = { 'wrong scope': 'it belongs to another service, not this project', 'not accepted': 'it was never confirmed' };
 
   function narrate(stage, r, p) {
-    var notes = p.notes || {};
-    var add = function (text, note) { return note ? text + ' ' + note : text; };
     var filtered = r.candidates.filter(function (c) { return REASON[c.verdict]; });
     var passing = r.candidates.filter(function (c) { return c.rerank != null; });
     var bar = passing.filter(function (c) { return c.rerank >= THRESHOLD; }).length;
@@ -199,29 +197,28 @@
     var n = r.injected.length;
     switch (stage) {
       case 'request':
-        return 'The request arrives. The memory file is already in the context, because your code always includes it.';
+        return 'The request arrives, and the memory file is already in the context, because your code always includes it.';
       case 'query':
-        return 'Your code turns the request into a search: a few keywords for exact matches, and the meaning of the whole request for similar notes.';
+        return 'Your code turns the request into a search: keywords for exact matches, plus the meaning of the whole request for similar notes.';
       case 'candidates':
-        return add('Keyword search finds ' + count(r.candidates.filter(function (c) { return c.kw.length; }).length, 'note', 'notes') +
-          ', and the search by meaning returns the ' + WORDS[r.candidates.filter(function (c) { return c.vec != null; }).length] + ' closest.', notes.candidates);
+        return 'Keyword search finds ' + count(r.candidates.filter(function (c) { return c.kw.length; }).length, 'note', 'notes') +
+          ', and the search by meaning returns the ' + WORDS[r.candidates.filter(function (c) { return c.vec != null; }).length] + ' closest.';
       case 'filter':
-        if (!filtered.length) return 'Every result belongs to this project and is confirmed, so the filter removes nothing.';
-        return filtered.map(function (c) { return 'Your code removes the ' + label(c.id) + ', because ' + REASON[c.verdict] + '.'; }).join(' ');
+        if (!filtered.length) return 'Every result is about this project or this user and is confirmed, so nothing is removed.';
+        return 'Your code removes ' + filtered.map(function (c) { return 'the ' + label(c.id) + ', because ' + REASON[c.verdict]; }).join(', and ') + '.';
       case 'rerank':
-        return add('A second scoring step rates how well each note fits the request. ' +
-          (!bar ? 'None reaches the ' + THRESHOLD + ' bar.' : cap(count(bar, 'note reaches', 'notes reach')) + ' the ' + THRESHOLD + ' bar' +
-            (over ? ', but only ' + WORDS[bar - over] + ' fit in the ' + BUDGET + ' tokens of room.' : '.')), notes.rerank);
+        return 'A second scoring step rates how well each note fits the request, and ' + (!bar ? 'none reaches the ' + THRESHOLD + ' bar.'
+          : count(bar, 'note reaches', 'notes reach') + ' the ' + THRESHOLD + ' bar' + (over ? ', but only ' + WORDS[bar - over] + ' fit in the ' + BUDGET + ' tokens of room.' : '.'));
       case 'provenance':
         if (!n) return 'Nothing was picked, so there is nothing to check.';
-        return 'Your code checks where each picked note came from and when it was last checked. ' + (stale.length
-          ? stale.map(function (i) { return 'The ' + label(i.id) + ' is out of date, because ' + i.source + ' changed after it was checked, so it goes in with a warning.'; }).join(' ')
-          : 'All of them are current.');
+        return stale.length
+          ? 'Your code checks where each picked note came from, and finds that the ' + label(stale[0].id) + ' is out of date, because ' + stale[0].source + ' changed after it was last checked.'
+          : 'Your code checks where ' + (n === 1 ? 'the picked note' : 'each picked note') + ' came from and when it was last checked, and ' + (n === 1 ? 'it is' : 'all of them are') + ' current.';
       case 'inject':
-        if (!n) return 'Nothing fits, so your code adds nothing. It does not fill the space with weak matches.';
-        return 'Your code adds ' + count(n, 'note', 'notes') + ' to the context, after the memory file, each tagged with its source and date.';
+        return n ? 'Your code adds ' + count(n, 'note', 'notes') + ' to the context after the memory file, ' + (n === 1 ? 'tagged' : 'each tagged') + ' with its source and date.'
+          : 'Nothing fits, so your code adds nothing, rather than filling the space with weak matches.';
       default:
-        return notes.model;
+        return p.outcome;
     }
   }
 
@@ -232,7 +229,7 @@
     if (p.secret) {
       p.status = out.decision = 'blocked';
       out.checks.privacy = 'blocked: a credential';
-      out.say = 'This is a password. Your code refuses to save it, because saved memory shows up later in contexts, logs, and traces.';
+      out.say = 'Your code refuses to store a password, because stored memory shows up later in contexts, logs, and traces.';
       return out;
     }
     var cur = store.filter(function (e) { return e.key === p.key && e.scope === p.scope && e.status === 'accepted'; })[0];
@@ -246,14 +243,14 @@
       store.push({ id: p.key.replace(/\W+/g, '-'), label: 'new fact', type: 'fact', key: p.key, value: p.value, text: p.text, scope: p.scope, source: auth.source, verified: TODAY, status: 'accepted', tokens: 25 });
       p.status = out.decision = 'accepted';
       out.evidence = auth;
-      out.say = 'Nothing in memory covers this yet, and the ' + auth.source + ' confirms it: it ' + auth.says + '. Your code accepts the fact and records the ' + auth.source + ' as its source.';
+      out.say = 'Nothing stored covers this yet and the ' + auth.source + ' confirms it, so your code accepts the fact with the ' + auth.source + ' as its source.';
       return out;
     }
     if (cur && auth && auth.value === cur.value) {
       cur.verified = TODAY;
       p.status = out.decision = 'rejected';
       out.evidence = auth;
-      out.say = 'This contradicts a confirmed fact, "' + cur.text + '" Being newer proves nothing, so your code checks ' + auth.source + ', which says ' + auth.says + '. That backs the confirmed fact, so your code rejects the proposal.' + (p.why ? ' ' + p.why : '');
+      out.say = 'The proposal contradicts a confirmed fact, and ' + auth.source + ' backs the confirmed fact, so your code rejects the proposal even though it is newer.';
       return out;
     }
     if (cur && auth && auth.value === p.value) {
@@ -263,12 +260,11 @@
       store.push({ id: id, label: cur.label, type: 'fact', key: p.key, value: p.value, text: p.text, scope: p.scope, source: auth.source, verified: TODAY, status: 'accepted', pinned: cur.pinned, tokens: cur.tokens, supersedes: cur.id });
       p.status = out.decision = 'replaces';
       out.evidence = auth;
-      out.say = 'This contradicts a confirmed fact, "' + cur.text + '" This time ' + auth.source + ' backs the new claim (' + auth.says + '), so your code marks the old fact as replaced and keeps it as history.';
+      out.say = 'The proposal contradicts a confirmed fact, but ' + auth.source + ' backs the new claim, so your code marks the old fact as replaced and keeps it as history.';
       return out;
     }
     p.status = out.decision = 'unresolved';
-    out.say = (cur ? 'This contradicts a confirmed fact, "' + cur.text + '" ' : '') + 'Nothing your code can read settles it' + (p.why ? ', and ' + p.why : '') +
-      '. So your code keeps both claims, keeps using the confirmed one, and asks a person.';
+    out.say = (cur ? 'The proposal contradicts a confirmed fact and nothing' : 'Nothing') + ' your code can read settles it, so your code keeps both claims, keeps using the confirmed one, and asks a person.';
     return out;
   }
 
@@ -277,13 +273,13 @@
     var lane = PROPOSALS.map(function (p) { var q = clone(p); q.status = 'pending'; return q; });
     var steps = [];
     function snap(s) { s.store = clone(store); s.proposals = clone(lane); steps.push(s); }
-    snap({ title: 'Proposals arrive', say: 'The run is over. During it, the model asked to remember five things, and your code queued each one as a proposal. Nothing reads a proposal until your code accepts it.' });
+    snap({ title: 'Proposals arrive', say: 'During the run, the model asked to remember five things, and your code queued each one as a proposal that nothing reads yet.' });
     lane.forEach(function (p, n) {
       var d = decide(store, p);
       snap({ proposal: p.id, decision: d.decision, evidence: d.evidence || null, conflict: d.conflict || null, checks: d.checks,
         title: 'Proposal ' + (n + 1) + ': ' + DECISION_LABEL[d.decision], say: d.say });
     });
-    snap({ title: 'The next memory file', file: memoryFile(store), say: 'Your code rebuilds the memory file at the start of the next run, so that run sees Python 3.12. The MySQL claim never entered memory, and the Friday question waits for a person.' });
+    snap({ title: 'The next memory file', file: memoryFile(store), say: 'Your code rebuilds the memory file for the next run, so that run sees Python 3.12, while the MySQL claim never entered memory.' });
     return { proposals: clone(PROPOSALS), steps: steps, final: store };
   }
 
@@ -331,8 +327,8 @@
 
     var frame = h('div', { class: 'w-frame ms' });
     frame.appendChild(h('div', { class: 'w-head' },
-      h('p', { class: 'w-title', text: root.getAttribute('data-title') || 'Memory: saved outside the model, added to one context' }),
-      h('p', { class: 'w-sub', text: 'Press Next to move one step. Scores, dates, and sizes are made up but realistic.' })));
+      h('p', { class: 'w-title', text: root.getAttribute('data-title') || 'How stored notes reach the model' }),
+      h('p', { class: 'w-sub', text: 'Your code stores notes outside the model and adds only the useful ones to each call. Press Next to follow one request. Scores and dates are made up.' })));
     var body = h('div', { class: 'w-body' });
     frame.appendChild(body);
 
@@ -425,7 +421,7 @@
 
     function paintStore(stage) {
       panelA.textContent = '';
-      title(panelA, 'What your code has saved (outside the model)');
+      title(panelA, 'Stored outside the model');
       [['Always included: the memory file', function (e) { return e.pinned; }],
         ['Searched when needed', function (e) { return !e.pinned && e.status === 'accepted'; }],
         ['Proposed, not confirmed', function (e) { return e.status === 'proposed'; }]].forEach(function (g) {
@@ -448,7 +444,7 @@
 
     function paintContext(stage) {
       panelB.textContent = '';
-      title(panelB, 'What the model sees right now');
+      title(panelB, 'What the model sees on this call');
       var ol = h('ol', { class: 'ms-ctx' });
       var total = 0;
       res.context.forEach(function (b) {
@@ -479,12 +475,14 @@
       var c = res.candidates;
       var key = STAGES[stage].key;
       title(details, 'Details for this step');
+      var notice = PRESETS[current].notice && PRESETS[current].notice[key];
+      if (notice) details.appendChild(h('p', { class: 'ms-notice' }, h('strong', { text: 'Worth noticing: ' }), notice));
       if (key === 'request') {
-        details.appendChild(rows([['Searches only', 'notes about this project or this user'], ['Room for notes', BUDGET + ' tokens'], ['Relevance bar', THRESHOLD + ' (on a scale from 0 to 1)']]));
+        details.appendChild(rows([['Searches only', 'notes about this project or this user'], ['Room for notes', BUDGET + ' tokens'], ['Lowest fit score kept', THRESHOLD + ', on a scale from 0 to 1']]));
       } else if (key === 'query') {
         details.appendChild(rows([
           ['Keywords', h('span', { class: 'ms-chips' }, res.keywords.map(function (k) { return h('code', { text: k }); }))],
-          ['Meaning', 'the whole request, turned into numbers by an embedding model'],
+          ['Meaning', 'the whole request, turned into a list of numbers so that similar texts get similar numbers'],
           ['Skipped', count(memoryFile(STORE).length, 'fact', 'facts') + ' already in the memory file']]));
       } else if (key === 'candidates') {
         var kw = c.filter(function (x) { return x.kw.length; }).sort(function (a, b) { return b.kw.length - a.kw.length; });
@@ -534,7 +532,7 @@
       panelA.textContent = '';
       panelB.textContent = '';
       var p = st.proposal ? st.proposals.filter(function (x) { return x.id === st.proposal; })[0] : null;
-      title(panelA, 'Saved facts');
+      title(panelA, 'Stored facts');
       var touched = [st.conflict, st.conflict ? st.conflict + '-2' : null];
       var ul = h('ul', { class: 'ms-list' });
       st.store.filter(function (e) { return e.type === 'fact' && e.status !== 'proposed'; }).forEach(function (e) {
@@ -545,7 +543,7 @@
       });
       panelA.appendChild(ul);
 
-      title(panelB, 'Proposals from this run (not used yet)');
+      title(panelB, 'Proposals from this run (not stored yet)');
       var lane = h('ul', { class: 'ms-list' });
       st.proposals.forEach(function (q) {
         lane.appendChild(h('li', { class: 'ms-entry' + (q.id === st.proposal ? ' is-hl' : '') },

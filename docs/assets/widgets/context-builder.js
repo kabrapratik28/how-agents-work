@@ -1,6 +1,6 @@
-/* Context builder (chapter 04). Choose what goes into Patch's next model call, then see how full the window is,
-   what the model can answer, what your code still keeps, and what the call costs.
-   AC.sims['context-builder'].build(cfg) is pure and tested by tools/sims/context-builder.test.mjs.
+/* Context builder (chapter 04). Toggle what goes into Patch's next model call and watch what the model sees
+   and what it can answer. Compaction, extra options, cost, and the session log sit in sections below.
+   AC.sims['context-builder'] (build, describe) is pure and tested by tools/sims/context-builder.test.mjs.
    Token counts and prices are illustrative. */
 (function () {
   'use strict';
@@ -47,7 +47,7 @@
 
   var GROUPS = {
     rules: { label: 'Rules and tool list', role: 'runtime' },
-    extras: { label: 'Skills, memory, helper report', role: 'state' },
+    extras: { label: 'Memory, skills, helper report', role: 'state' },
     history: { label: 'History', role: 'model' },
     files: { label: 'Files', role: 'tool' },
     user: { label: "The user's message", role: 'user' }
@@ -88,6 +88,19 @@
     compaction: { label: 'compaction rewrote the history', key: null }
   };
 
+  // Plain names for the probes, used when the narration reports which answers changed.
+  var TOPIC = {
+    constraint: "the user's rule about tests/fixtures/", failure: 'the original failure', suite: 'whether the suite passes',
+    changelog: 'the changelog rule', deploy: 'the deploy steps', callers: 'the callers of is_valid()'
+  };
+  var STATE_WORD = { in: 'in view', tool: 'one tool call away', missing: 'missing' };
+  var NO_TOOL_WHY = {
+    failure: "Step 1's placeholder names the saved file, but no tools are sent, so the model cannot read it.",
+    suite: 'No test has run since the edit at step 47, and no tools are sent, so the model cannot run one.',
+    deploy: 'The skills list names the deploy skill, but no tools are sent, so the model cannot read it.',
+    callers: 'There is no helper report, and no tools are sent, so the model cannot search.'
+  };
+
   function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
   function outTokens(s) { return SESSION[s - 1][2]; }
   function userTokens(s) { return USER_MSGS[s] || 0; }
@@ -95,6 +108,8 @@
   function range(a, b) { var out = []; for (var i = a; i <= b; i++) out.push(i); return out; }
   function total(list, fn) { return list.reduce(function (a, s) { return a + fn(s); }, 0); }
   function span(list) { return list.length === 1 ? 'Step ' + list[0] : 'Steps ' + list[0] + ' to ' + list[list.length - 1]; }
+  function windowLabel(n) { return n >= 1000000 ? (n / 1000000) + 'M tokens' : (n / 1000) + 'K tokens'; }
+  function joinAnd(parts) { return parts.length < 3 ? parts.join(' and ') : parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1]; }
   var LOG_TOKENS = total(range(1, STEPS), stepTokens);
 
   function defaults() {
@@ -110,7 +125,7 @@
     Object.keys(c).forEach(function (k) { if (cfg && cfg[k] !== undefined) c[k] = cfg[k]; });
     c.history = Math.max(0, Math.min(STEPS, Math.round(Number(c.history) || 0)));
     c.window = WINDOWS.indexOf(Number(c.window)) === -1 ? 128000 : Number(c.window);
-    if (c.tools !== 'all') c.tools = 'core';
+    if (['none', 'core', 'all'].indexOf(c.tools) === -1) c.tools = 'core';
     if (['none', 'relevant', 'dump'].indexOf(c.files) === -1) c.files = 'relevant';
     if (c.summary !== 'careless') c.summary = 'careful';
     if (!CHANGE[c.change]) c.change = 'policy';
@@ -136,7 +151,7 @@
 
     var blocks = [];
     if (c.system) blocks.push(block('system', BLOCK.system.label, 'rules', BLOCK.system.tokens));
-    blocks.push(block('tools', BLOCK.tools[c.tools].label, 'rules', BLOCK.tools[c.tools].tokens));
+    if (c.tools !== 'none') blocks.push(block('tools', BLOCK.tools[c.tools].label, 'rules', BLOCK.tools[c.tools].tokens));
     ['agents', 'skillsIndex', 'memory', 'subagent'].forEach(function (k) {
       if (c[k]) blocks.push(block(k, BLOCK[k].label, BLOCK[k].group, BLOCK[k].tokens));
     });
@@ -170,10 +185,15 @@
       return { id: 'call_' + s, step: s, result: ph ? 'placeholder' : 'full', ref: ph ? '.patch/outputs/call_' + s + '.log' : null };
     });
 
-    // Evidence rules: "in" when a sent block holds the fact; "tool" when a tool can fetch it and something sent
+    // Evidence rules: "in" when a sent block holds the fact; "tool" when a sent tool can fetch it and something sent
     // points to it (a path, a skills list entry, or a test run that has not happened yet); otherwise "missing".
+    // With no tool list, no tool can be called, so "tool" turns into "missing".
     var probes = [];
-    var p = function (key, q, state, why, stale) { probes.push({ key: key, q: q, state: state, why: why, stale: stale || null }); };
+    var noTools = c.tools === 'none';
+    var p = function (key, q, state, why, stale) {
+      if (noTools && state === 'tool') { state = 'missing'; why = NO_TOOL_WHY[key]; }
+      probes.push({ key: key, q: q, state: state, why: why, stale: stale || null });
+    };
     var careful = c.compacted && c.summary === 'careful';
 
     var cq = 'If a billing test fails, may Patch edit tests/fixtures/tokens.json?';
@@ -211,12 +231,13 @@
     if (!fits) w('overflow', 'Too big for the window, so the provider would reject the call.');
     else if (pct >= NEARLY_FULL) w('nearly-full', 'Over 80% full. A runtime like this one would compact now.');
     if (c.tools === 'all') w('tools', 'The tool list alone is ' + Math.round(100 * BLOCK.tools.all.tokens / occupancy) + '% of the context, and most of those tools are not needed here.');
+    if (noTools) w('no-tools', 'No tool list, so the model cannot read files, run tests, or search.');
     if (c.files === 'dump') w('dump', 'The folder dump is mostly noise, and it includes tests/fixtures/, which the user said not to edit.');
     if (full(STEP.staleRead)) w('stale-read', 'An old read of auth/session.py from before the fix is still in view.');
     if (!c.system) w('no-system', 'No system prompt, so the model gets no role, rules, or answer format.');
     if (!c.compacted && verbatim === 0) w('no-history', 'No history, so the model does not know what it has already done.');
 
-    // Narration: the one consequence that matters most for the current choices. Warnings it already states are
+    // Narration of the current state, shown before the reader changes anything. Warnings it already states are
     // listed in `covered`, so the widget does not show them twice.
     var say;
     var covered = [];
@@ -229,6 +250,9 @@
       say = "Compacting freed most of the window. The careful summary kept the user's rule, and the full history is still in the session log.";
     } else if (c.cleared) {
       say = 'Old tool outputs are now short placeholders that say where the full text is saved. Every tool call still has its result, and most of the window is free again.';
+    } else if (noTools) {
+      say = 'No tools are sent, so the model can answer only from what it sees.';
+      covered = ['no-tools'];
     } else if (c.files === 'dump') {
       say = 'The whole folder fits in this window, but most of it is noise, and every call pays for it.';
       covered = ['dump'];
@@ -284,7 +308,43 @@
     };
   }
 
-  AC.sims['context-builder'] = { STEPS: STEPS, RECENT: RECENT, RESERVE: RESERVE, NEARLY_FULL: NEARLY_FULL, defaults: defaults, build: build };
+  // One or two plain sentences about what the last change did: the change, the size effect, and changed answers.
+  function describe(prev, next) {
+    var a = prev.cfg, b = next.cfg;
+    var onOff = function (key, thing) { return (b[key] ? 'You added ' : 'You removed ') + thing + '.'; };
+    var what = [];
+    if (a.system !== b.system) what.push(onOff('system', 'the system prompt'));
+    if (a.agents !== b.agents) what.push(onOff('agents', 'the project notes (AGENTS.md)'));
+    if (a.memory !== b.memory) what.push(onOff('memory', 'the saved project facts'));
+    if (a.skillsIndex !== b.skillsIndex) what.push(onOff('skillsIndex', 'the skills list'));
+    if (a.subagent !== b.subagent) what.push(onOff('subagent', "the helper agent's report"));
+    if (a.skillBody !== b.skillBody) what.push(b.skillBody ? 'You loaded the full deploy steps.' : 'You removed the full deploy steps.');
+    if (a.tools !== b.tools) what.push({ none: 'You removed the tool list.', core: 'You sent the 6 tools Patch uses.', all: 'You sent all 40 tools.' }[b.tools]);
+    if (a.files !== b.files) what.push({ none: 'You removed the file.', relevant: 'You sent only the file being fixed.', dump: 'You sent every file in auth/ and tests/.' }[b.files]);
+    if (a.window !== b.window) what.push('You switched to a ' + windowLabel(b.window) + ' window.');
+    if (!b.compacted && a.history !== b.history) what.push(b.history === STEPS ? 'You now send all ' + STEPS + ' steps.' : 'You now send only the last ' + b.history + ' steps.');
+    if (a.compacted !== b.compacted) what.push(b.compacted ? 'You compacted the history with a ' + b.summary + ' summary.' : 'You undid the compaction.');
+    else if (b.compacted && a.summary !== b.summary) what.push('You switched to a ' + b.summary + ' summary.');
+    if (!b.compacted && a.cleared !== b.cleared) what.push(b.cleared ? 'You cleared the old tool outputs.' : 'You brought back the old tool outputs.');
+    if (!what.length && a.change !== b.change) return 'The cost section now prices a call after ' + CHANGE[b.change].label + '.';
+    if (!what.length) return next.say;
+
+    var delta = next.occupancy - prev.occupancy;
+    var size = delta === 0 ? ' The size did not change.'
+      : ' The context ' + (delta > 0 ? 'grew' : 'shrank') + ' by ' + fmt(Math.abs(delta)) + ' tokens' +
+        (next.fits ? ' and is now ' + Math.round(100 * next.pct) + '% full.' : ', and now it does not fit, so the provider would reject the call.');
+    if (next.fits && !prev.fits) size += ' It fits again.';
+
+    var changed = next.probes.filter(function (q, i) { return q.state !== prev.probes[i].state; });
+    var answers = '';
+    ['missing', 'tool', 'in'].forEach(function (state) {
+      var topics = changed.filter(function (q) { return q.state === state; }).map(function (q) { return TOPIC[q.key]; });
+      if (topics.length) answers += ' Now ' + STATE_WORD[state] + ': ' + joinAnd(topics) + '.';
+    });
+    return what.join(' ') + size + (answers || ' Every answer stays the same.');
+  }
+
+  AC.sims['context-builder'] = { STEPS: STEPS, RECENT: RECENT, RESERVE: RESERVE, NEARLY_FULL: NEARLY_FULL, defaults: defaults, build: build, describe: describe };
 
   /* ---------- widget ---------- */
 
@@ -293,86 +353,101 @@
     tool: { text: 'One tool call away', cls: 'mid' },
     missing: { text: 'Missing', cls: 'bad' }
   };
-  function windowLabel(n) { return n >= 1000000 ? (n / 1000000) + 'M tokens' : (n / 1000) + 'K tokens'; }
 
   AC.widgets['context-builder'] = function (root) {
     var h = AC.h;
     var cfg = defaults();
-    var controls = {};
+    var last = null;          // the previous result, so the narration can say what changed
+    var syncs = [];           // functions that copy cfg into the controls after each change
 
-    function toggle(key, label) {
-      var id = AC.uid('cb-' + key);
+    function check(label, hint, isOn, setOn) {
+      var id = AC.uid('cb');
       var input = h('input', { type: 'checkbox', id: id });
-      input.addEventListener('change', function () { cfg[key] = input.checked; update(); });
-      controls[key] = input;
-      return h('label', { class: 'w-toggle', for: id }, input, h('span', { text: label }));
+      var hintEl = h('span', { class: 'cb-hint' });
+      input.addEventListener('change', function () { setOn(input.checked); update(); });
+      syncs.push(function () {
+        input.checked = isOn();
+        hintEl.textContent = typeof hint === 'function' ? hint() : hint;
+      });
+      return h('label', { class: 'w-toggle cb-check', for: id }, input, h('span', null, h('span', { class: 'cb-name', text: label }), hintEl));
     }
-    function choice(key, label, options) {
-      var id = AC.uid('cb-' + key);
+    function choice(label, options, get, set) {
+      var id = AC.uid('cb');
       var sel = h('select', { id: id });
       options.forEach(function (o) { sel.appendChild(h('option', { value: o[0], text: o[1] })); });
-      sel.addEventListener('change', function () { cfg[key] = sel.value; update(); });
-      controls[key] = sel;
-      return h('span', { class: 'cb-choice' }, h('label', { for: id, text: label }), sel);
+      sel.addEventListener('change', function () { set(sel.value); update(); });
+      syncs.push(function () { sel.value = String(get()); });
+      return { el: h('span', { class: 'cb-choice' }, h('label', { for: id, text: label }), sel), sel: sel };
     }
-    function group(title, kids) { return h('fieldset', { class: 'cb-group' }, h('legend', { text: title }), kids); }
+    function more(title, kids) {
+      return h('details', { class: 'cb-more' }, h('summary', { text: title }), h('div', { class: 'cb-more-body' }, kids));
+    }
 
     var frame = h('div', { class: 'w-frame cb' });
     frame.appendChild(h('div', { class: 'w-head' },
-      h('p', { class: 'w-title', text: root.getAttribute('data-title') || "What goes into Patch's next call" }),
+      h('p', { class: 'w-title', text: root.getAttribute('data-title') || "What the model sees on Patch's next call" }),
       h('p', { class: 'w-sub', text: 'Numbers are illustrative.' })));
     var body = h('div', { class: 'w-body' });
     frame.appendChild(body);
     body.appendChild(h('p', { class: 'cb-scene', text: 'Patch has taken 48 steps on a bug fix, and the user now writes:' }));
     body.appendChild(h('p', { class: 'cb-request' }, h('span', { class: 'badge user', text: 'User' }), LATEST));
 
-    /* the main picture: how full the window is, and what that means */
+    /* first screen: what the model sees */
     var big = h('p', { class: 'cb-big' });
     var bigSub = h('p', { class: 'cb-bigsub' });
     var barWrap = h('div', { class: 'cb-barwrap', 'aria-hidden': 'true' });
     var legend = h('ul', { class: 'cb-legend' });
     var say = h('p', { class: 'cb-say', 'aria-live': 'polite' });
     var warns = h('ul', { class: 'cb-warns' });
-    var keeps = h('p', { class: 'cb-keeps' });
+    body.appendChild(h('div', { class: 'cb-picture' },
+      h('p', { class: 'cb-panel-title', text: 'What the model sees' }), big, bigSub, barWrap, legend, say, warns));
+
+    /* first screen: the seven toggles and the questions */
+    var histId = AC.uid('cb-history');
+    var histLabel = h('label', { for: histId, class: 'cb-name' });
+    var slider = h('input', { type: 'range', id: histId, min: '0', max: String(STEPS), step: '1', class: 'cb-range' });
+    slider.addEventListener('input', function () { cfg.history = Number(slider.value); update(); });
+    var resetBtn = h('button', { class: 'w-btn', type: 'button', text: 'Start over' });
+    resetBtn.addEventListener('click', function () { cfg = defaults(); last = null; update(); });
+    var toggles = h('div', { class: 'cb-panel cb-controls' },
+      h('p', { class: 'cb-panel-title', text: 'Choose what the model sees' }),
+      check('System prompt', 'your rules for the model', function () { return cfg.system; }, function (on) { cfg.system = on; }),
+      h('div', { class: 'cb-slider' }, histLabel, slider),
+      check('Tools', function () { return cfg.tools === 'all' ? 'all 40 tools (set under More options)' : 'the 6 tools Patch can use'; },
+        function () { return cfg.tools !== 'none'; }, function (on) { cfg.tools = on ? 'core' : 'none'; }),
+      check('Memory', '3 saved facts about the project', function () { return cfg.memory; }, function (on) { cfg.memory = on; }),
+      check('Files', function () { return cfg.files === 'dump' ? 'every file in auth/ and tests/ (set under More options)' : 'auth/session.py, the file being fixed'; },
+        function () { return cfg.files !== 'none'; }, function (on) { cfg.files = on ? 'relevant' : 'none'; }),
+      check('Skills', 'a list of skills the model can load', function () { return cfg.skillsIndex; }, function (on) { cfg.skillsIndex = on; }),
+      check('Subagent results', "the helper agent's report", function () { return cfg.subagent; }, function (on) { cfg.subagent = on; }),
+      h('p', { class: 'cb-note', text: "The user's latest message is always sent." }),
+      resetBtn);
+    var probeList = h('ul', { class: 'cb-probes' });
+    var probes = h('div', { class: 'cb-panel' },
+      h('p', { class: 'cb-panel-title', text: 'What the model can answer right now' }),
+      h('p', { class: 'cb-note', text: 'In view: the answer is in the context. One tool call away: a tool can fetch it, and something in the context points to it. Missing: neither.' }),
+      probeList,
+      h('p', { class: 'cb-note', text: 'Being in view does not guarantee that the model uses a fact well. Missing guarantees that it cannot.' }));
+    body.appendChild(h('div', { class: 'cb-grid' }, toggles, probes));
+
+    /* below the first screen: labeled sections, closed until the reader opens them */
     var clearBtn = h('button', { class: 'w-btn', type: 'button', 'aria-pressed': 'false' });
     clearBtn.addEventListener('click', function () { cfg.cleared = !cfg.cleared; update(); });
     var compactBtn = h('button', { class: 'w-btn', type: 'button', 'aria-pressed': 'false' });
     compactBtn.addEventListener('click', function () { cfg.compacted = !cfg.compacted; update(); });
-    var resetBtn = h('button', { class: 'w-btn', type: 'button', text: 'Start over' });
-    resetBtn.addEventListener('click', function () { cfg = defaults(); update(); });
-    var winChoice = choice('window', 'Window size', WINDOWS.map(function (n) { return [String(n), windowLabel(n)]; }));
-    body.appendChild(h('div', { class: 'cb-picture' },
-      h('div', { class: 'cb-picture-head' }, h('div', null, big, bigSub), winChoice),
-      barWrap, legend, say, warns,
-      h('div', { class: 'cb-actions' }, clearBtn, compactBtn,
-        choice('summary', 'Summary', [['careful', 'careful'], ['careless', 'careless']]), resetBtn),
-      keeps));
+    var summaryChoice = choice('Summary', [['careful', 'careful'], ['careless', 'careless']], function () { return cfg.summary; }, function (v) { cfg.summary = v; });
+    body.appendChild(more('Try compaction: shrink the history when the window fills', [
+      h('p', { class: 'cb-text', text: 'Clearing swaps old tool outputs for short placeholders that point to the saved full text. Compacting replaces the old steps with a summary and keeps the last 6 steps word for word.' }),
+      h('div', { class: 'cb-actions' }, clearBtn, compactBtn, summaryChoice.el)]));
 
-    /* choices and questions */
-    var histId = AC.uid('cb-history');
-    var histLabel = h('label', { for: histId });
-    var slider = h('input', { type: 'range', id: histId, min: '0', max: String(STEPS), step: '1', class: 'cb-range' });
-    slider.addEventListener('input', function () { cfg.history = Number(slider.value); update(); });
-    var userId = AC.uid('cb-user');
-    var ctl = h('div', { class: 'cb-panel cb-controls' },
-      h('p', { class: 'cb-panel-title', text: 'Choose what goes in' }),
-      group('Rules and tools', [toggle('system', 'System prompt'), toggle('agents', 'Project notes (AGENTS.md)'),
-        choice('tools', 'Tool list', [['core', 'the 6 tools Patch uses'], ['all', 'all 40 tools']])]),
-      group('Skills, memory, helpers', [toggle('skillsIndex', 'Skills list'), toggle('skillBody', 'Deploy steps (a skill)'),
-        toggle('memory', 'Saved project facts (memory)'), toggle('subagent', "Helper agent's report")]),
-      group('Files', choice('files', 'File', [['none', 'none'], ['relevant', 'the file being fixed'], ['dump', 'every file in auth/ and tests/']])),
-      group('History', [h('span', { class: 'cb-choice cb-stack' }, histLabel, slider),
-        h('label', { class: 'w-toggle', for: userId }, h('input', { type: 'checkbox', id: userId, checked: true, disabled: true }),
-          h('span', { text: 'Latest user message (always sent)' }))]));
-    var probeList = h('ul', { class: 'cb-probes' });
-    var probes = h('div', { class: 'cb-panel' },
-      h('p', { class: 'cb-panel-title', text: 'Can the model answer these now?' }),
-      h('p', { class: 'cb-note', text: 'In view: the answer is in the context. One tool call away: a tool can fetch it, and something in the context points to it. Missing: neither.' }),
-      probeList,
-      h('p', { class: 'cb-note', text: 'Being in view does not guarantee that the model uses a fact well. Missing guarantees that it cannot.' }));
-    body.appendChild(h('div', { class: 'cb-grid' }, ctl, probes));
+    body.appendChild(more('More options: window size, more tools, a folder dump, and more', [
+      choice('Window size', WINDOWS.map(function (n) { return [String(n), windowLabel(n)]; }), function () { return cfg.window; }, function (v) { cfg.window = Number(v); }).el,
+      check('Send all 40 tools', 'instead of the 6 Patch uses', function () { return cfg.tools === 'all'; }, function (on) { cfg.tools = on ? 'all' : 'core'; }),
+      check('Send every file in auth/ and tests/', 'instead of only the file being fixed', function () { return cfg.files === 'dump'; }, function (on) { cfg.files = on ? 'dump' : 'relevant'; }),
+      check('Load the full deploy steps', 'the text of one skill, not only its name', function () { return cfg.skillBody; }, function (on) { cfg.skillBody = on; }),
+      check('Project notes (AGENTS.md)', "the team's rules, such as the changelog rule", function () { return cfg.agents; }, function (on) { cfg.agents = on; })]));
 
-    /* cost: secondary. Rows are built once, so the select inside the last row keeps focus. */
+    // Cost rows are built once, so the select inside the last row keeps focus when it changes.
     var costRows = h('div', { class: 'cb-cost' });
     var costNotes = h('div');
     function costRow(labelEl) {
@@ -385,7 +460,7 @@
       costRows.appendChild(h('div', { class: 'cb-cost-row' },
         h('div', { class: 'cb-cost-label' }, labelEl, explain), h('span', { class: 'cb-mini-track' }, mini), units));
       return function (x, top, text) {
-        var part = function (n, price) { return (100 * n * price / 1000 / x.units) + '%'; };
+        var part = function (n, rate) { return (100 * n * rate / 1000 / x.units) + '%'; };
         explain.textContent = text;
         mini.style.width = (100 * x.units / top) + '%';
         reused.style.width = part(x.cached, PRICE.cached);
@@ -396,29 +471,27 @@
     }
     var paintCold = costRow(h('span', { class: 'cb-cost-name', text: 'First call of a session' }));
     var paintWarm = costRow(h('span', { class: 'cb-cost-name', text: 'Next call' }));
-    var paintChanged = costRow(choice('change', 'After', Object.keys(CHANGE).map(function (k) { return [k, CHANGE[k].label]; })));
-    body.appendChild(h('div', { class: 'cb-panel cb-cost-panel' },
-      h('p', { class: 'cb-panel-title', text: 'What this call costs' }), costRows, costNotes));
+    var paintChanged = costRow(choice('After', Object.keys(CHANGE).map(function (k) { return [k, CHANGE[k].label]; }),
+      function () { return cfg.change; }, function (v) { cfg.change = v; }).el);
+    body.appendChild(more('What it costs: a first call, a cached call, and a call after a change', [costRows, costNotes]));
 
-    /* every block: tucked away */
+    var keeps = h('p', { class: 'cb-text' });
     var blockList = h('ol', { class: 'cb-list' });
     var summaryBox = h('div');
-    body.appendChild(h('details', { class: 'cb-more' }, h('summary', { text: 'Show every block that is sent, in order' }), blockList, summaryBox));
+    body.appendChild(more('What your code keeps, and every block that is sent', [keeps, blockList, summaryBox]));
 
     function sync(r) {
-      ['system', 'agents', 'skillsIndex', 'skillBody', 'memory', 'subagent'].forEach(function (k) { controls[k].checked = !!cfg[k]; });
-      ['tools', 'files', 'summary', 'change'].forEach(function (k) { controls[k].value = cfg[k]; });
-      controls.window.value = String(cfg.window);
+      syncs.forEach(function (f) { f(); });
       slider.value = String(r.history.verbatim);
       slider.disabled = cfg.compacted;
       slider.setAttribute('aria-valuetext', r.history.verbatim + ' steps');
-      histLabel.textContent = cfg.compacted ? 'Compacted: a summary plus the last ' + RECENT + ' steps' : 'Steps sent: the last ' + r.history.verbatim + ' of ' + STEPS;
+      histLabel.textContent = cfg.compacted ? 'History: compacted to a summary plus the last ' + RECENT + ' steps' : 'History: the last ' + r.history.verbatim + ' of ' + STEPS + ' steps';
       clearBtn.textContent = cfg.cleared ? 'Bring back old outputs' : 'Clear old tool outputs';
       clearBtn.setAttribute('aria-pressed', String(!!cfg.cleared));
       clearBtn.disabled = cfg.compacted;
       compactBtn.textContent = cfg.compacted ? 'Undo compaction' : 'Compact the history';
       compactBtn.setAttribute('aria-pressed', String(!!cfg.compacted));
-      controls.summary.disabled = !cfg.compacted;
+      summaryChoice.sel.disabled = !cfg.compacted;
     }
 
     function paintPicture(r) {
@@ -426,7 +499,7 @@
       big.textContent = r.fits ? pc + '% full' : 'Too big: ' + pc + '%';
       big.classList.toggle('over', !r.fits);
       bigSub.textContent = r.fits
-        ? fmt(r.occupancy) + ' tokens used, out of ' + fmt(r.usable) + ' available for input (the rest is kept free for the reply)'
+        ? fmt(r.occupancy) + ' tokens used, out of ' + fmt(r.usable) + ' available for input (the rest of the ' + fmt(r.window) + '-token window is kept free for the reply)'
         : fmt(r.occupancy) + ' tokens needed, but only ' + fmt(r.usable) + ' are available for input';
       var whole = Math.max(r.window, r.occupancy + r.reserve);
       var width = function (n) { return (100 * n / whole) + '%'; };
@@ -447,13 +520,13 @@
       });
       legend.appendChild(h('li', null, h('span', { class: 'cb-swatch cb-hatch' }), 'Kept free for the reply'));
       if (!r.fits) legend.appendChild(h('li', null, h('span', { class: 'cb-swatch cb-overflow' }), 'Past the window limit'));
-      say.textContent = r.say;
+      say.textContent = last ? describe(last, r) : r.say;
       warns.textContent = '';
       r.warnings.forEach(function (x) {
-        if (r.covered.indexOf(x.key) === -1) warns.appendChild(h('li', { text: x.text }));
+        if (!last && r.covered.indexOf(x.key) !== -1) return;
+        if (x.key === 'overflow') return;   // the headline already says it
+        warns.appendChild(h('li', { text: x.text }));
       });
-      keeps.textContent = 'Your code still keeps all ' + r.log.steps + ' steps and every full tool output in its session log' +
-        (r.log.compactions ? ', plus the summary as a new entry' : '') + '. The model sees only what is in the bar.';
     }
 
     function paintProbes(r) {
@@ -482,7 +555,9 @@
       costNotes.appendChild(h('p', { class: 'cb-note', text: 'Prices: reused input 0.1, new input 1, reply 4 units per 1,000 tokens. Real reuse also depends on provider rules, such as a minimum length and how long the cache is kept.' }));
     }
 
-    function paintBlocks(r) {
+    function paintKeeps(r) {
+      keeps.textContent = 'Your code keeps all ' + r.log.steps + ' steps (' + fmt(r.log.tokens) + ' tokens) and every full tool output in its session log' +
+        (r.log.compactions ? ', plus the summary as a new entry' : '') + '. None of it reaches the model unless it is in the list below.';
       blockList.textContent = '';
       var boundary = false;
       r.blocks.forEach(function (b, i) {
@@ -498,19 +573,20 @@
       });
       summaryBox.textContent = '';
       if (r.summaryText) {
-        summaryBox.appendChild(h('p', { class: 'cb-panel-title', text: 'The summary the model will read' }));
+        summaryBox.appendChild(h('p', { class: 'cb-name', text: 'The summary the model will read' }));
         summaryBox.appendChild(h('pre', { class: 'cb-summary', text: r.summaryText }));
       }
     }
 
     function update() {
       var r = build(cfg);
-      cfg = r.cfg;
+      cfg = Object.assign({}, r.cfg);   // a copy: r.cfg must stay as it was, so the next narration can compare
       sync(r);
       paintPicture(r);
       paintProbes(r);
       paintCost(r);
-      paintBlocks(r);
+      paintKeeps(r);
+      last = r;
     }
 
     root.appendChild(frame);

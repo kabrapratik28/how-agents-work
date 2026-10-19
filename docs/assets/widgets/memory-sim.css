@@ -39,6 +39,7 @@
 .ms-ctx-total { margin: .6rem 0 0; font-size: .875rem; color: var(--text-2); }
 .ms-note { margin: .4rem 0 0; font-size: .875rem; color: var(--text-3); }
 /* Details: secondary, so quieter than the two main panels. */
+.ms-notice { margin: 0 0 .55rem; font-size: .9rem; line-height: 1.45; color: var(--text); }
 .ms-details { margin-top: .9rem; padding: .7rem .85rem; border-radius: 10px; background: var(--bg-sunk); }
 .ms-details .ms-title { font-size: .875rem; color: var(--text-2); }
 .ms-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem .9rem; margin: 0; font-size: .875rem; }
