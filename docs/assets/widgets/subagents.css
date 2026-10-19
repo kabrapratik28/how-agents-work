@@ -1,0 +1,73 @@
+/* subagents widget: controls, then narration and the main picture (large), then calmer details. No text under 13px. */
+.sa-request { margin: 0 0 .8rem; font-size: 1rem; }
+.sa-controls { display: flex; flex-wrap: wrap; gap: .6rem 1.4rem; align-items: center; margin-bottom: .9rem; }
+.sa-group { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.sa-group-label { font-size: .88rem; font-weight: 650; color: var(--text-2); margin-right: .2rem; }
+.sa-opt { font-size: .9rem; }
+.sa-opt[hidden] { display: none; }
+.sa-narration .sa-say { margin: 0; font-size: 1.05rem; line-height: 1.55; }
+.sa-narration .sa-ask { margin-top: .4rem; font-weight: 700; }
+.sa-choices { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .6rem; }
+
+/* the main picture: parent, three children, the parent's answer */
+.sa-picture { margin-top: 1rem; }
+.sa-box { padding: .75rem .9rem; border: 1.5px solid var(--border-strong); border-radius: 12px; background: var(--bg); }
+.sa-box > :last-child { margin-bottom: 0; }
+.sa-parent { border-color: var(--model-bd); background: var(--model-bg); }
+.sa-box-title { display: flex; flex-wrap: wrap; gap: .3rem .6rem; justify-content: space-between; align-items: baseline; margin: 0 0 .35rem; font-size: 1rem; font-weight: 700; }
+.sa-parent .sa-box-title { justify-content: flex-start; margin: 0; }
+.sa-box-line { margin: .15rem 0; font-size: .95rem; color: var(--text-2); }
+.sa-arrow { margin: .15rem 0; text-align: center; font-size: 1.2rem; line-height: 1.2; color: var(--text-3); }
+.sa-kids { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
+.sa-answer { margin: .45rem 0 0; padding: .5rem .75rem; font-size: 1rem; line-height: 1.5; border-left: 3px solid var(--model-bd); background: var(--bg-sunk); border-radius: 4px; color: var(--text); }
+.sa-note { margin: .5rem 0 0; font-size: .95rem; }
+.sa-answer-box .w-warn { font-size: .9rem; }
+.sa-small { margin-top: .45rem; font-size: .88rem; }
+.sa-small > summary { cursor: pointer; color: var(--link); font-weight: 650; }
+.sa-kv { margin-top: .4rem; font-family: var(--font); font-size: .86rem; gap: .25rem .6rem; }
+.sa-kv dt { font-weight: 650; color: var(--text-2); }
+.sa-entries { list-style: none; margin: .4rem 0 0; padding: 0; max-height: 14rem; overflow-y: auto; display: grid; gap: .2rem; font-size: .84rem; }
+.sa-entries li { display: flex; gap: .5rem; align-items: baseline; margin: 0; padding: .15rem .35rem; border-left: 3px solid var(--border); color: var(--text-2); }
+.sa-entries li.call { border-left-color: var(--model-bd); }
+.sa-entries li.result { border-left-color: var(--tool-bd); }
+.sa-entries li.report { border-left-color: var(--model); color: var(--text); font-weight: 600; }
+.sa-entries li.failed { border-left-color: var(--bad); color: var(--text); }
+.sa-entry-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sa-tok { font-family: var(--mono); font-size: .82rem; color: var(--text-3); white-space: nowrap; }
+
+/* three labeled numbers */
+.sa-stats { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 .4rem; }
+.sa-stat { display: flex; align-items: baseline; gap: .45rem; padding: .4rem .8rem; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); }
+.sa-stat-num { font-weight: 750; font-size: 1.05rem; }
+.sa-stat-label { font-size: .88rem; color: var(--text-2); }
+.sa-compare { margin: 0 0 .2rem; font-size: .92rem; color: var(--text-2); }
+
+/* calmer details */
+.sa-row { margin-top: .9rem; }
+.sa-detail { font-size: .86rem; }
+.sa-line { margin: .55rem 0 0; font-size: .88rem; color: var(--text-2); }
+.sa-tl { display: grid; gap: .3rem; }
+.sa-tl-row { display: grid; grid-template-columns: 4.8rem minmax(0, 1fr); gap: .5rem; align-items: center; }
+.sa-tl-label { font-size: .84rem; font-weight: 650; color: var(--text-2); }
+.sa-track { position: relative; height: 1.1rem; background: var(--bg-sunk); border-radius: 4px; }
+.sa-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--bg-elev); }
+.sa-bar.parent { background: var(--model-bg); border-color: var(--model-bd); }
+.sa-bar.child { background: var(--text-3); border-color: var(--text-3); opacity: .5; }
+.sa-bar.failed { background: transparent; border: 1.5px dashed var(--bad); }
+.sa-axis { background: none; height: 1.1rem; font: .8rem var(--mono); color: var(--text-3); }
+.sa-axis span { position: absolute; top: 0; transform: translateX(-2px); white-space: nowrap; }
+.sa-axis span.end { transform: translateX(-100%); }
+.sa-ctx { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; font-size: .86rem; }
+.sa-ctx li { display: flex; gap: .45rem; align-items: baseline; margin: 0; }
+.sa-ctx li.pending { color: var(--bad); }
+.sa-ctx-label { flex: 1; min-width: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.sa-more { margin-top: .8rem; padding: .55rem .8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); font-size: .88rem; }
+.sa-more > summary { cursor: pointer; font-weight: 650; color: var(--link); }
+.sa-more[open] > summary { margin-bottom: .5rem; }
+.sa-table { width: 100%; border-collapse: collapse; font-size: .86rem; line-height: 1.4; }
+.sa-table th, .sa-table td { padding: .3rem .4rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; font-weight: 400; }
+.sa-table td { font-family: var(--mono); text-align: right; white-space: nowrap; }
+.sa-table .sa-total th, .sa-table .sa-total td { font-weight: 700; }
+.sa-log { max-height: none; }
+.sa-log li .badge { margin-right: .45rem; }
+@media (max-width: 760px) { .sa-kids { grid-template-columns: 1fr; } .sa-tl-row { grid-template-columns: 4rem minmax(0, 1fr); } .sa-controls { gap: .55rem; } }

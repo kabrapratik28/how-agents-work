@@ -276,7 +276,7 @@
   /* ---------- widget ---------- */
 
   var PILL = { runtime: 'your code', tool: 'tool', state: 'file', user: 'user', model: 'model' };
-  var ACTOR = { runtime: 'Runtime', model: 'Model', user: 'User', human: 'Human', tool: 'Tool' };
+  var ACTOR = { runtime: 'Your code', model: 'Model', user: 'User', human: 'Person', tool: 'Tool' };
 
   function stateRows(st) {
     var rows = [['status', st.status.replace(/_/g, ' ')], ['step', st.step + ' (limit ' + st.max_steps + ')']];

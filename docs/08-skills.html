@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skills · How AI Agents Work</title>
+<meta name="description" content="Six things systems call a skill, what each reduces to mechanically, and why loading a skill grants no permissions.">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/widgets/skills.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 8 · Capabilities built on the loop</p>
+    <h1>Skills</h1>
+    <p class="lede">A skill is a package of instructions, tools, or code that your agent loads only when a task needs it. It travels through the same loop as everything else.</p>
+    <div class="loop-map" data-focus="context act"></div>
+  </header>
+
+  <section id="one-word">
+    <h2>One word, six mechanisms</h2>
+    <p>Three teams each say "we added a skill to our agent". The first saved a good prompt for writing commit messages. The second added three GitHub tools. The third gave the agent a folder with instructions and a script, which the agent may also rewrite.</p>
+    <p>All three are reusable packages that the agent picks up while it runs. But they enter the loop at different points and carry different risks. So for each kind, ask what it reduces to mechanically.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Six meanings of "skill"</caption>
+        <thead><tr><th scope="col">Meaning</th><th scope="col">Mechanically</th><th scope="col">Reaches the model as</th><th scope="col">Can it act?</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Prompt skill</th><td>Saved text</td><td>The text itself</td><td>No</td></tr>
+          <tr><th scope="row">Tool bundle</th><td>A group of tools and their code</td><td>Entries in the tool list</td><td>Yes, through those tools</td></tr>
+          <tr><th scope="row">Workflow</th><td>Steps in code, or steps written as instructions</td><td>One tool, or instructions</td><td>Code: yes. Instructions: only through other tools</td></tr>
+          <tr><th scope="row">Script</th><td>A program file</td><td>Its output, and its code only if read</td><td>Yes, through the command tool</td></tr>
+          <tr><th scope="row">Knowledge package</th><td>Reference documents</td><td>The documents, when read</td><td>No</td></tr>
+          <tr><th scope="row">Learned procedure</th><td>A skill the agent wrote itself</td><td>Like any other skill</td><td>Depends on what it contains</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="prompt-skill">
+    <h2>Prompt skill: saved instructions</h2>
+    <p>Say your team has instructions for writing commit messages that work well. You save them once and reuse them whenever a session needs them. That saved text is a prompt skill.</p>
+    <p>Your code stores the text and adds it to the context when something selects it. A user can type a command such as <code>/commit</code>. Your code can attach it to a kind of task, or the model can ask for it by name. Either way it only changes what the model reads, so it adds no new ability.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Prompt skill = saved text + a rule for selecting it + adding it to the context.</p>
+    </aside>
+  </section>
+
+  <section id="tool-bundle">
+    <h2>Tool bundle: a set of tools</h2>
+    <p>A GitHub skill might bundle three tools: <code>create_pr</code>, <code>list_issues</code>, and <code>add_comment</code>. When the skill is on, your code adds those three definitions to the tool list. Each call still goes through the normal checks before it runs.</p>
+    <p>Unlike a prompt skill, a bundle adds real abilities, so switching one on is a decision about permissions. Bundles also save context, because every tool definition costs tokens on every call (<a href="02-tools.html#discovery">chapter 2</a>).</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Tool bundle = a set of tool definitions and their code + a rule for when they appear in the tool list.</p>
+    </aside>
+  </section>
+
+  <section id="workflow-skill">
+    <h2>Workflow: a fixed sequence of steps</h2>
+    <p>A deploy skill might list three steps: build, apply the database migrations, and run the smoke tests. You can package that sequence in two very different ways.</p>
+<pre><code># version 1: the order lives in code
+def deploy_staging():
+    run("make build")
+    run("alembic upgrade head", env="staging")
+    run("pytest tests/smoke -q", env="staging")
+
+# version 2: the order lives in text the model reads
+DEPLOY_SKILL = """1. Build with `make build`.
+2. Apply the migrations to staging.
+3. Run the smoke tests. Stop if any fail."""</code></pre>
+    <p>In version 1, the model only decides to call <code>deploy_staging()</code>, and your code runs the steps in order. In version 2, the model reads the steps and tries to follow them, so it can skip one, swap two, or stop early. If a step must never be skipped, put it in code. This is the workflow-or-agent choice from <a href="00-llm-vs-agent.html#spectrum">chapter 0</a>, inside a single skill.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Workflow skill = code that runs the steps in order (enforced), or numbered instructions the model follows (not enforced).</p>
+    </aside>
+  </section>
+
+  <section id="script-skill">
+    <h2>Script: code that runs</h2>
+    <p>A migration skill might include <code>new_migration.py</code>, which writes a migration file and checks it. The skill's instructions tell the model to run it. So the model asks for it through the normal command tool, such as <code>run_command</code>.</p>
+    <p>Your code checks that request like any other command, runs it where commands run, and returns the output. Usually the model sees only that output, because the script's code enters the context only if something reads the file. The script also runs with whatever rights the command tool has. If commands run on your laptop as you, so does every skill script (<a href="10-sandboxing.html">chapter 10</a>).</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Script skill = a file on disk + a request to run it through the normal tool path + its output as the tool result.</p>
+    </aside>
+  </section>
+
+  <section id="knowledge-package">
+    <h2>Knowledge package: documents loaded when needed</h2>
+    <p>A payments skill might carry the payment provider's API guide. Most tasks never need it, but a task that touches refunds needs all of it.</p>
+    <p>The documents are files with an entry in an index. When a task matches, the model reads a file into the context. This looks like retrieval (<a href="05-memory.html#retrieval-trace">chapter 5</a>), but the choice works differently. Retrieval usually ranks small chunks by how similar they are to a query. Here the model picks a whole file from its short description.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Knowledge package = files + an index entry + a read when needed.</p>
+    </aside>
+  </section>
+
+  <section id="learned-procedure">
+    <h2>Learned procedure: a skill the agent wrote</h2>
+    <p>Say an agent fixes a flaky test by resetting a database fixture before each run. Afterward, it writes the steps that worked into a new skill file. Next week, it loads that file like any other skill.</p>
+    <p>Nothing about the model changes, because no training happens. "The agent learned a skill" means a model call wrote a file and a later run read it, which <a href="05-memory.html#procedural-memory">chapter 5</a> calls procedural memory. The hard part is deciding what deserves saving. A fix that worked once may have worked by luck. And an instruction planted in a web page can get saved and come back in every later session.</p>
+    <p>Research agents use the same idea. In Minecraft, the Voyager agent kept "an ever-growing skill library of executable code" and reused it, without any fine-tuning of the model.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Learned procedure = a model call that writes a skill file + the normal loading path, later.</p>
+    </aside>
+  </section>
+
+  <section id="reduces-to">
+    <h2>What "skill" reduces to</h2>
+    <p>Look back at the six examples. Each one has the same three parts:</p>
+    <ul>
+      <li>a package: text, tool definitions, code, or files;</li>
+      <li>a short description that says when to use it;</li>
+      <li>and a loading rule that says who loads it (the model, the user, or your code) and when.</li>
+    </ul>
+    <p>Loading never adds a new mechanism. Text enters the context like any text, tools run like any tools, and scripts run like any command. So a skill system reuses the loop you already have.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Skill = a package + a description for choosing it + a loading rule, all delivered through the normal context and tool paths.</p>
+    </aside>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>A skill is like a dynamically loaded procedure or instruction package, such as a plugin. Your program knows the names at startup and loads the code on first use.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a loaded library runs exactly when called. A loaded skill is mostly text that the model may follow, half follow, or ignore. A linker finds code by its exact name, while a model picks a skill by reading descriptions and can pick the wrong one. And a library runs with all the rights of its program. A skill gets no rights at all, because its scripts still go through your tool checks.</p>
+    </aside>
+    <p>Skills sit next to three other packaging ideas from this course:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Skill, tool, subagent, memory</caption>
+        <thead><tr><th scope="col">Idea</th><th scope="col">What it is</th><th scope="col">How it reaches the model</th><th scope="col">Who picks it</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Tool</th><td>An action: a schema plus code</td><td>A definition in the tool list</td><td>The model, by calling it</td></tr>
+          <tr><th scope="row">Skill</th><td>A package of instructions, tools, code, or files</td><td>An index entry, then the full text when loaded</td><td>The model, the user, or your code</td></tr>
+          <tr><th scope="row">Subagent</th><td>Another agent loop</td><td>A tool that returns a result (<a href="07-subagents.html">chapter 7</a>)</td><td>The parent model</td></tr>
+          <tr><th scope="row">Memory</th><td>Saved facts and experiences</td><td>Retrieved items, or a file loaded every time</td><td>A retrieval rule, or your code</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="progressive-disclosure">
+    <h2>One concrete format: a folder with SKILL.md</h2>
+    <p>Hermes, Deep Agents, and Pi all use the same format, the Agent Skills format. Each skill is a folder with a file named <code>SKILL.md</code>, plus optional scripts and reference files:</p>
+<pre><code>skills/add-db-migration/
+  SKILL.md                    # name and description at the top, then the steps
+  scripts/new_migration.py    # run through the command tool
+  references/conventions.md   # read only when the steps say so</code></pre>
+<pre><code>---
+name: add-db-migration
+description: Create and check an Alembic migration. Use when a task changes the database schema.
+---
+# Add a database migration
+1. Read references/conventions.md once per session.
+2. Run: python scripts/new_migration.py --table TABLE --add "COLUMN SPEC"
+3. Read the file it writes, and fix anything its checks flag.
+4. Never apply a migration to a shared database. Ask a person.</code></pre>
+    <p>Loading happens in three steps:</p>
+    <ol>
+      <li>At the start, your code puts each skill's name, description, and file path into the context. This short index costs a few dozen tokens per skill.</li>
+      <li>When a task matches a description, the model reads that <code>SKILL.md</code>, and its text enters the context as a tool result.</li>
+      <li>If the text says so, the model then reads a reference file or runs a script.</li>
+    </ol>
+    <p>This is called progressive disclosure: the model learns that a skill exists without paying for all of it. For example, twelve skills might cost about 540 tokens as an index, against about 17,500 as full text.</p>
+    <p>The description matters more than it looks, because the model decides from it alone whether to load the skill. So write it like a trigger: say what the skill does and when to use it.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Pi</strong> (1.3.0) and <strong>Deep Agents</strong> (0.7.28) load a skill with the ordinary file-read tool, because the index gives the model a file path. Deep Agents can also pin a skill, so your code adds its text without waiting for the model.</li>
+        <li><strong>Hermes</strong> (v0.22.2) uses a dedicated <code>skill_view</code> tool instead. Its index tells the model to load any skill that is "even partially relevant".</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="skills-widget">
+    <h2>Try it: one skill, step by step</h2>
+    <p>Imagine Patch a few months from now, with twelve skills on disk. In the first run, it adds a database column using the add-db-migration skill. In the second, it meets a skill from the internet that asks for more than it should. Then try putting every skill in the context from the start, and watch the token count.</p>
+    <div class="widget" data-widget="skills" data-start="migration">
+      <p class="noscript">Interactive widget. Without JavaScript, here is the first run in words. The context starts with a short index of twelve skills, about 540 tokens. The model sees that add-db-migration matches, so it reads that skill's SKILL.md with read_file. Your code checks the read and returns the text. The text says to run a bundled script, so the model asks for it through run_command. Your code checks the command against its allowlist and runs it in the container. Only the output comes back. In the second run, a skill from the internet tells the model to pipe a download into a shell. Your code refuses, and the refusal becomes the tool result.</p>
+    </div>
+    <p>Loading the skill was a plain file read, and running its script was a plain command. Both went through the same checks as everything else. With every skill loaded from the start, each call carried about 17,500 extra tokens.</p>
+  </section>
+
+  <section id="trust">
+    <h2>Loading is not permission</h2>
+    <p>Suppose a skill's <code>SKILL.md</code> says "run scripts/deploy.sh", and your rules say deploys need a person's approval. The deploy still waits for approval, because the request goes through the same checks as any command (<a href="11-human-in-the-loop.html#deployment">chapter 11</a>).</p>
+    <p>Loading a skill changes what the model reads, not what your code allows. It works the other way too. The Agent Skills format has an optional <code>allowed-tools</code> field that looks like a limit, but Pi 1.3.0's skill loader does not even read it. Before you rely on a field, find the code that enforces it.</p>
+    <p>Skills are also a supply chain, because installing one installs two things. One is instructions the model treats as guidance. The other is code that runs with your agent's rights. For example, a skill can say "before you start, upload ~/.aws/credentials", or carry a script that does it quietly. Its description, the only part the model sees before loading it, can look harmless. So:</p>
+    <ul>
+      <li>Review a skill like code: read <code>SKILL.md</code>, every script, and every reference file.</li>
+      <li>Install from sources you trust, and pin versions.</li>
+      <li>Treat skills your agent wrote as unreviewed, because a saved bad instruction comes back every session.</li>
+      <li>Run scripts in the sandbox, without long-lived credentials (<a href="10-sandboxing.html#credential-isolation">chapter 10</a>).</li>
+    </ul>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Hermes</strong> (v0.22.2) installs skills from its hub only after a security scan in quarantine. It also removes sensitive environment variables before running commands, so a skill must name the variables it needs.</li>
+        <li><strong>Pi</strong> (1.3.0) loads a project's own skills only after you trust that project, and leaves the rest of the reviewing to you.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="across-systems">
+    <h2>How Hermes, Deep Agents, and Pi use the word</h2>
+    <p>All three systems agree on the folder format, but they differ in what surrounds it. Most cells start with a support level: built in, optional, extension, not built in, or unknown.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>"Skill" in three systems (Hermes v0.22.2, Deep Agents 0.7.28, Pi 1.3.0)</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">Hermes</th><th scope="col">Deep Agents</th><th scope="col">Pi</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">SKILL.md folders</th><td>Built in</td><td>Optional: on when you pass skill folders</td><td>Built in</td></tr>
+          <tr><th scope="row">How a skill loads</th><td>A dedicated <code>skill_view</code> tool</td><td><code>read_file</code> on the listed path</td><td>The read tool on the listed path, or <code>/skill:name</code></td></tr>
+          <tr><th scope="row">Skills loaded every time</th><td>Built in: pinned skills</td><td>Optional: pinned skills</td><td>Unknown in the research notes</td></tr>
+          <tr><th scope="row">Skills tied to tools</th><td>Built in: a skill can appear only when a set of tools is available</td><td>Optional: tools a skill lists appear after it is read</td><td>Extension: a Pi package can ship tools next to skills</td></tr>
+          <tr><th scope="row">Skills the agent writes</th><td>Built in: the agent writes skills, a review step updates them, a cleanup job archives unused ones</td><td>Optional: the agent can edit skills stored where it may write</td><td>Not built in: the agent can write skill files with its normal tools</td></tr>
+          <tr><th scope="row">Where skills come from</th><td>Built in: a skills folder, plus a hub that installs from GitHub repos and URLs</td><td>Optional: the folders you pass in</td><td>Built in: user and project folders, shared <code>.agents/skills</code> folders, and Pi packages</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The biggest difference is who writes skills. Hermes has the agent write and update them, with a review step and a cleanup job. Deep Agents treats skills as one more option you switch on. Pi keeps the format and leaves the rest to you.</p>
+    <p>Pi's docs also rank the options from weakest to strongest: a line in AGENTS.md, then a prompt template, a skill, an extension, and a package. They advise starting with the weakest option that works, and that advice fits any system.</p>
+    <!-- TODO(sources): how other systems use the word "skill" (with support levels), from notes/research/others.md once it exists -->
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch gets packaged procedures</h2>
+    <p>Patch version 8 gets two skills that load on demand. The <code>add-db-migration</code> skill has a script that writes and checks migrations, and <code>deploy-staging</code> has a deploy script. Only their names, descriptions, and paths sit in the context until a task needs them. Both scripts run through <code>run_command</code>, so the existing rules apply: the migration script may run in the container, and the deploy script needs approval.</p>
+<pre><code>skills/
+  add-db-migration/
+    SKILL.md                    # when to use it, four steps
+    scripts/new_migration.py    # run_command, in the container
+    references/conventions.md   # read only when the steps say so
+  deploy-staging/
+    SKILL.md                    # steps, smoke tests, rollback
+    scripts/deploy.sh           # run_command; needs a person's approval
+# context: + skills index (2 entries, about 90 tokens)</code></pre>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>The skill never loads</h3>
+      <dl>
+        <dt>Why</dt><dd>The model decides from the description alone, and the description is vague or overlaps another one.</dd>
+        <dt>Detect</dt><dd>On tasks that match, the trace shows no read of the skill's file.</dd>
+        <dt>Mitigate</dt><dd>Write descriptions like triggers, and test them on sample tasks. Let the user or your code load a skill when the match is certain.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>A hostile skill</h3>
+      <dl>
+        <dt>Why</dt><dd>A skill from outside carries a planted instruction or a harmful script.</dd>
+        <dt>Detect</dt><dd>Review every change to skill folders, and log the commands that skills cause.</dd>
+        <dt>Mitigate</dt><dd>Trusted sources, pinned versions, the sandbox, approval for scripts from unreviewed skills, and no long-lived secrets.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>The agent saves a bad lesson</h3>
+      <dl>
+        <dt>Why</dt><dd>A learned procedure generalizes from one lucky run, or turns a passing error into a rule.</dd>
+        <dt>Detect</dt><dd>Watch for new or changed skill files after runs.</dd>
+        <dt>Mitigate</dt><dd>Rules for what may be saved, a person reviewing skill writes, and cleanup of skills nobody uses.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Which kind of skill you need, or whether a line in AGENTS.md is enough.</li>
+          <li>Who may load a skill: the model, the user, or your code.</li>
+          <li>Where skills come from, and who reviews them.</li>
+          <li>Whether the agent may write skills, and who reviews what it writes.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>Reading skill folders and building the index.</li>
+          <li>The loader: a file read, or a dedicated skill tool.</li>
+          <li>Checks that every file a skill mentions exists.</li>
+          <li>Tests that run each bundled script.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">What is a skill, mechanically? (Q15)</p>
+      <details class="answer"><summary>Answer</summary><p>A reusable package of instructions, tool definitions, code, or documents, with a description and a loading rule. It reaches the model through the normal paths: text in the context, tools in the tool list, and scripts through the command tool.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">A SKILL.md says "run scripts/deploy.sh", and your rules require approval for deploys. What happens?</p>
+      <ol class="options">
+        <li>The skill's instruction counts as approval</li>
+        <li data-correct>The run goes through the normal checks and waits for approval</li>
+        <li>Skill scripts skip the tool checks</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>The normal checks apply. The skill's text is only a request, so the deploy still waits for approval.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Your agent has 40 skills of about 1,500 tokens each. Why keep an index instead of loading all of them?</p>
+      <details class="answer"><summary>Answer</summary><p>Loading all 40 adds about 60,000 tokens to every call. An index of about 45 tokens per skill adds about 1,800. The index costs one extra read for each skill a task uses. There is also a risk that the model misses a skill with a poor description.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>"Skill" names six different mechanisms, so ask which one you mean before you design around it.</li>
+      <li>An index plus loading on demand keeps the context small, and the description decides whether a skill ever loads.</li>
+      <li>Skills are a supply chain: their text steers the model and their scripts run with your agent's rights, so review them like code.</li>
+    </ul>
+  </section>
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills">Equipping agents for the real world with Agent Skills</a> (Anthropic, October 2025). Where the SKILL.md format came from, and how progressive disclosure works in practice.</li>
+      <li><a href="https://agentskills.io/specification">Agent Skills specification</a> (agentskills.io). The open format itself: the required fields, the folder layout, and size guidance.</li>
+      <li><a href="https://arxiv.org/abs/2305.16291">Voyager</a> (Wang and others, 2023). A research agent that builds its own library of code skills, an early example of learned procedures.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+<script defer src="assets/widgets/stepper.js"></script>
+<script defer src="assets/widgets/skills.js"></script>
+</body>
+</html>
