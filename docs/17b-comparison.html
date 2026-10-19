@@ -53,9 +53,9 @@
           <tr>
             <th scope="row">Philosophy</th>
             <td data-col="pi"><span class="w-pill sl sl-form">CLI and packages</span>
-              <p class="cell">A small core on purpose. It ships basic parts, and you, or Pi itself, build the rest.</p>
+              <p class="cell">A small core on purpose. It ships a loop, four tools, sessions, and skills, and you, or Pi itself, add more as extensions.</p>
               <details><summary>How it works</summary>
-                <p>The slogan is "Primitives, not features". Subagents, plan mode, permission popups, and to-do lists stay out of the core. Earendil: "We wait until something has proven itself, and only then do we consider adopting it."</p>
+                <p>Subagents, plan mode, permission popups, and to-do lists stay out of the core. Earendil: "We wait until something has proven itself, and only then do we consider adopting it."</p>
                 <p>Sources: <a href="https://pi.dev/">pi.dev</a>; <a href="https://earendil.com/posts/pi-1-0/">"Pi 1.0" (2026-10-01)</a>.</p>
               </details></td>
             <td data-col="deepagents"><span class="w-pill sl sl-form">Python library</span>
@@ -67,7 +67,7 @@
             <td data-col="hermes"><span class="w-pill sl sl-form">Application</span>
               <p class="cell">A personal assistant that improves itself. One agent core serves every app, and new abilities come as skills, plugins, or MCP servers.</p>
               <details><summary>How it works</summary>
-                <p>The repo guide's rules: "Per-conversation prompt caching is sacred" and "The core is a narrow waist; capability lives at the edges."</p>
+                <p>The repo guide makes the prompt cache a priority: nothing in the cached prompt changes mid-session except at compaction. It also keeps the core small, so new abilities arrive as skills, plugins, or MCP servers rather than new core tools.</p>
                 <p>Sources: <a href="https://github.com/NousResearch/hermes-agent/blob/v0.22.2/AGENTS.md">AGENTS.md (v0.22.2)</a>; <a href="https://hermes-agent.nousresearch.com/docs/developer-guide/architecture">architecture doc</a>.</p>
               </details></td>
           </tr>
@@ -86,9 +86,9 @@
                 <p>Sources: <a href="https://github.com/langchain-ai/langchain/blob/d670a3ac7cf65750e32b28e93dc0a8bc53a78dae/libs/langchain_v1/langchain/agents/factory.py">factory.py (langchain 1.4.6)</a>; <a href="https://github.com/langchain-ai/deepagents/blob/12f70f27cc2e96ac715f4563e05b205be7adc275/libs/deepagents/deepagents/graph.py">graph.py</a>.</p>
               </details></td>
             <td data-col="hermes"><span class="w-pill sl sl-builtin">Built in</span>
-              <p class="cell">One loop per user message. It ends on a reply with no tool calls, with no step limit by default.</p>
+              <p class="cell">One loop per user message. It ends on a reply with no tool calls, with no step limit within a turn by default.</p>
               <details><summary>How it works</summary>
-                <p>A watchdog stops a turn after 600 seconds without progress, and guards warn about a call that keeps failing. If the model says it will act but calls no tool, Hermes nudges it, at most twice per turn.</p>
+                <p>Other limits remain: a watchdog stops a turn after 600 seconds without progress, guards warn about a call that keeps failing, and per-turn caps limit web searches and subagent spawns. If the model says it will act but calls no tool, Hermes nudges it, at most twice per turn.</p>
                 <p>Sources: <a href="https://hermes-agent.nousresearch.com/docs/developer-guide/agent-loop">agent loop doc</a>; <a href="https://github.com/NousResearch/hermes-agent/blob/v0.22.2/hermes_cli/config_defaults.py">config_defaults.py</a>.</p>
               </details></td>
           </tr>
@@ -109,7 +109,7 @@
             <td data-col="hermes"><span class="w-pill sl sl-builtin">Built in</span>
               <p class="cell">A message list during the turn. One SQLite database per profile stores every session, and memory and skills are text files.</p>
               <details><summary>How it works</summary>
-                <p>The database keeps each session's exact system prompt and its hash. A resumed session reuses that prompt, so the provider cache still hits.</p>
+                <p>The database keeps each session's exact system prompt and its hash. A resumed session reuses that prompt, so its start stays eligible for the provider's cache, subject to the provider's retention time, routing, and rules.</p>
                 <p>Source: <a href="https://hermes-agent.nousresearch.com/docs/developer-guide/session-storage">session storage doc</a>.</p>
               </details></td>
           </tr>
@@ -122,10 +122,10 @@
                 <p>Source: <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/compaction.md">compaction.md</a>.</p>
               </details></td>
             <td data-col="deepagents"><span class="w-pill sl sl-builtin">Built in</span>
-              <p class="cell">Your prompt plus a skills list and memory files. Big tool results go to files, and at 85% of the window old messages become a summary.</p>
+              <p class="cell">Your prompt, plus skills and memory files if you configure them. Big tool results go to files, and long histories become a summary.</p>
               <details><summary>How it works</summary>
-                <p>Results over 20,000 tokens are saved under <code>/large_tool_results/</code>, with a preview of the first and last 5 lines. The summary replaces old messages only in what the model sees, and the state keeps every original.</p>
-                <p>Source: <a href="https://docs.langchain.com/oss/python/deepagents/context-engineering">context engineering doc</a>.</p>
+                <p>Tool results above about 80,000 characters (20,000 tokens at 4 characters each) are saved under <code>/large_tool_results/</code>, with a preview of the first and last 5 lines. The built-in file tools are exempt. Summarization starts at 85% of the input limit in the model's profile, or at 170,000 tokens with no profile. The summary replaces old messages only in what the model sees, and the state keeps every original.</p>
+                <p>Sources, at commit 12f70f2: <a href="https://github.com/langchain-ai/deepagents/blob/12f70f27cc2e96ac715f4563e05b205be7adc275/libs/deepagents/deepagents/middleware/_message_eviction.py">_message_eviction.py</a>; <a href="https://github.com/langchain-ai/deepagents/blob/12f70f27cc2e96ac715f4563e05b205be7adc275/libs/deepagents/deepagents/middleware/filesystem.py">filesystem.py</a>; <a href="https://github.com/langchain-ai/deepagents/blob/12f70f27cc2e96ac715f4563e05b205be7adc275/libs/deepagents/deepagents/middleware/summarization.py">summarization.py</a>.</p>
               </details></td>
             <td data-col="hermes"><span class="w-pill sl sl-builtin">Built in</span>
               <p class="cell">A system prompt frozen per session, with changing parts in the user message. A second model summarizes the middle of long chats.</p>
@@ -139,11 +139,11 @@
             <td data-col="pi"><span class="w-pill sl sl-builtin">Built in</span>
               <p class="cell"><code>read</code>, <code>bash</code>, <code>edit</code>, and <code>write</code> by default. Extensions add or replace tools, and MCP tools are reached through scripts or search.</p>
               <details><summary>How it works</summary>
-                <p>Output over 2,000 lines or 50 KB is cut, and bash saves the full text to a temp file. A result has a part for the model and a part for the screen that the model never sees.</p>
-                <p>Sources: <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/cli.md">cli.md</a>; <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/mcp.md">mcp.md</a>.</p>
+                <p><code>read</code> and <code>bash</code> output stops at 2,000 lines or 50 KB. <code>read</code> can page through a long file, and <code>bash</code> saves its full output to a temp file. A result has a part for the model and a part for the screen that the model never sees.</p>
+                <p>Sources: <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/cli.md">cli.md</a>; <a href="https://github.com/earendil-works/pi/tree/73f8de8/packages/coding-agent/src/core/tools">tool code</a>; <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/mcp.md">mcp.md</a>.</p>
               </details></td>
             <td data-col="deepagents"><span class="w-pill sl sl-builtin">Built in</span>
-              <p class="cell">File tools, a shell tool that needs a sandbox, and <code>task</code> for subagents. Your own functions and MCP tools join them.</p>
+              <p class="cell">File tools, a shell tool that needs a command-capable backend, and <code>task</code> for subagents. Your own functions and MCP tools join them.</p>
               <details><summary>How it works</summary>
                 <p><code>grep</code> matches literal text and stops at 1,000 matches. A second write to the same path in one reply is refused.</p>
                 <p>Source: <a href="https://docs.langchain.com/oss/python/deepagents/tools">tools doc</a>.</p>
@@ -164,15 +164,15 @@
                 <p>Sources: <a href="https://mariozechner.at/posts/2025-11-30-pi-coding-agent/">design post (2025-11-30)</a>; <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/examples/extensions/plan-mode/README.md">plan-mode example</a>.</p>
               </details></td>
             <td data-col="deepagents"><span class="w-pill sl sl-optional">Optional</span>
-              <p class="cell">An opt-in <code>write_todos</code> tool since 0.7.0. It replaces a list in state, and nothing enforces the list.</p>
+              <p class="cell"><code>write_todos</code> left the standard defaults in 0.7.0, though the built-in Codex profiles still add it. It replaces a list in state, and nothing enforces the list.</p>
               <details><summary>How it works</summary>
                 <p>The only rule checked is one <code>write_todos</code> call per reply. A test on three models found no statistically significant accuracy gain from the tool.</p>
-                <p>Sources: <a href="https://github.com/langchain-ai/langchain/blob/d670a3ac7cf65750e32b28e93dc0a8bc53a78dae/libs/langchain_v1/langchain/agents/middleware/todo.py">todo.py (langchain 1.4.6)</a>; <a href="https://github.com/langchain-ai/deepagents/pull/4929">PR #4929</a>.</p>
+                <p>Sources: <a href="https://github.com/langchain-ai/langchain/blob/d670a3ac7cf65750e32b28e93dc0a8bc53a78dae/libs/langchain_v1/langchain/agents/middleware/todo.py">todo.py (langchain 1.4.6)</a>; <a href="https://github.com/langchain-ai/deepagents/pull/4929">PR #4929</a>; <a href="https://github.com/langchain-ai/deepagents/blob/12f70f27cc2e96ac715f4563e05b205be7adc275/libs/deepagents/deepagents/profiles/harness/_openai_codex.py">Codex profile</a>.</p>
               </details></td>
             <td data-col="hermes"><span class="w-pill sl sl-builtin">Built in</span>
               <p class="cell">A <code>todo_list</code> tool (found through tool search), a <code>/plan</code> mode enforced only by the prompt, and a <code>/goal</code> loop with a judge.</p>
               <details><summary>How it works</summary>
-                <p>With <code>/goal</code>, another model answers done, continue, or blocked after each turn, for up to 20 turns. If the judge fails, the loop continues, and the turn limit stops it.</p>
+                <p>With <code>/goal</code>, another model answers done, continue, or blocked after each turn, for up to 20 turns by default. If the judge fails, the loop continues, and the turn limit stops it.</p>
                 <p>Source: <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/goals">goals doc</a>.</p>
               </details></td>
           </tr>
@@ -223,7 +223,7 @@
             <td data-col="pi"><span class="w-pill sl sl-ext">Extension or custom</span>
               <p class="cell">Not built in. Run <code>pi</code> again through bash, or use the example extension that starts separate <code>pi</code> processes.</p>
               <details><summary>How it works</summary>
-                <p>The example runs one task, several in parallel (up to 8, 4 at a time), or a chain, and caps each result at 50 KB. Pi's creator calls built-in subagents "a black box within a black box".</p>
+                <p>The example runs one task, several in parallel (up to 8, 4 at a time), or a chain, and caps each result at 50 KB. Pi's creator argues that built-in subagents hide their work from the user.</p>
                 <p>Sources: <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/examples/extensions/subagent/README.md">subagent example</a>; <a href="https://mariozechner.at/posts/2025-11-30-pi-coding-agent/">design post</a>.</p>
               </details></td>
             <td data-col="deepagents"><span class="w-pill sl sl-builtin">Built in</span>
@@ -235,7 +235,7 @@
             <td data-col="hermes"><span class="w-pill sl sl-builtin">Built in</span>
               <p class="cell"><code>delegate_task</code> starts children with a fresh context, no memory, and fewer tools. They run in the background by default.</p>
               <details><summary>How it works</summary>
-                <p>Up to 10 run at once, one level deep. A summary of at most 24,000 characters comes back later as a new message. A child that was running during a crash is marked unknown.</p>
+                <p>By default up to 10 run at once, one level deep, and both limits are settings. A summary of at most 24,000 characters comes back later as a new message. A child that was running during a crash is marked unknown.</p>
                 <p>Source: <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation">delegation doc</a>.</p>
               </details></td>
           </tr>
@@ -248,10 +248,10 @@
                 <p>Sources: <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/security.md">security.md</a>; <a href="https://github.com/earendil-works/pi/blob/73f8de8/packages/coding-agent/docs/containerization.md">containerization.md</a>.</p>
               </details></td>
             <td data-col="deepagents"><span class="w-pill sl sl-optional">Optional</span>
-              <p class="cell">By default there is no shell. A sandbox is a storage backend that can also run commands.</p>
+              <p class="cell">No shell by default. A command-capable backend can be an isolated sandbox, or a local shell with no isolation.</p>
               <details><summary>How it works</summary>
                 <p>Sandbox providers include LangSmith, Daytona, Modal, and Runloop. The local shell backend runs commands on your machine with no isolation. The docs say: "Never put secrets inside a sandbox."</p>
-                <p>Sources: <a href="https://docs.langchain.com/oss/python/deepagents/sandboxes">sandboxes doc</a>; <a href="https://docs.langchain.com/oss/python/deepagents/backends">backends doc</a>.</p>
+                <p>Sources: <a href="https://docs.langchain.com/oss/python/deepagents/sandboxes">sandboxes doc</a>; <a href="https://docs.langchain.com/oss/python/deepagents/backends">backends doc</a>; <a href="https://github.com/langchain-ai/deepagents/blob/12f70f27cc2e96ac715f4563e05b205be7adc275/libs/deepagents/deepagents/backends/local_shell.py">local_shell.py</a>.</p>
               </details></td>
             <td data-col="hermes"><span class="w-pill sl sl-builtin">Built in</span>
               <p class="cell">The shell runs locally or in Docker and other sandboxes. Inside a container, the container replaces command approval.</p>
@@ -305,7 +305,7 @@
           <tr>
             <th scope="row">Best mental model</th>
             <td data-col="pi">
-              <p class="cell">A tiny agent core (one loop, four tools, a tree-shaped log) with a plugin system. Every opinion is an extension, often written by Pi itself.</p>
+              <p class="cell">A tiny agent core (one loop, four tools, a tree-shaped log) with a plugin system. Plan mode, subagents, and approval gates are extensions, often written by Pi itself.</p>
               <details><summary>Why</summary><p>See the <a href="17-case-studies.html#pi">Pi profile</a>.</p></details></td>
             <td data-col="deepagents">
               <p class="cell">An ordinary tool loop wrapped in ordered middleware, with a virtual file system as working memory and subagents as throwaway context windows.</p>
@@ -321,30 +321,23 @@
 
   <section id="patterns">
     <h2>Patterns across the systems</h2>
-    <p>Look down the Context row. All three systems ask a model to summarize old messages when the window fills. All three keep recent messages word for word, and all three keep the original messages somewhere. That is a convergence. Other rows split three ways.</p>
+    <p>Suppose you move Patch from Deep Agents to Pi. Its skill folders and its <code>AGENTS.md</code> file still load, because all three systems read the Agent Skills format and <code>AGENTS.md</code>. Its approval rules do not carry over: on Deep Agents you listed tools in <code>interrupt_on</code>, and on Pi you would write an extension.</p>
 
-    <h3>Where they converge</h3>
+    <h3>What carries over</h3>
     <ul>
-      <li><strong>One loop.</strong> All three call the model, run the requested tools, and stop when a reply has no tool calls. All three can run several tool calls from one reply at the same time. None relies on a small step limit: Hermes has none by default, Pi's source shows none, and Deep Agents allows 9,999 steps.</li>
-      <li><strong>One skill format.</strong> All three use Agent Skills folders with a <code>SKILL.md</code> file. The prompt lists only names and descriptions, and the model loads the full file when a task needs it. Pi and Deep Agents load it with their normal read tool, while Hermes uses a dedicated <code>skill_view</code> tool.</li>
-      <li><strong>The same compaction recipe.</strong> A model call summarizes the older part of the conversation, and recent messages stay word for word. The originals are kept: in the Hermes database, in Deep Agents' state and an archive file, and in Pi's session file. Hermes and Pi even use nearly the same summary headings: goal, constraints and preferences, progress, key decisions, next steps, and critical context. The triggers differ.</li>
-      <li><strong>Large outputs leave the context.</strong> Deep Agents saves tool results over 20,000 tokens to a file and shows a preview. Pi cuts output at 2,000 lines or 50 KB and saves the full text to a temp file. Hermes caps shell output at 50,000 characters, keeping the start and the end.</li>
-      <li><strong>Tool definitions count as a cost.</strong> Hermes moved about 19 rarely used tools behind a search tool, which cut its desktop tool definitions from 13,367 to 6,883 tokens. Pi hides MCP tools by default. Deep Agents shows some tools only after the skill that needs them is read.</li>
-      <li><strong>Scripts that call tools.</strong> Hermes lets the model write a Python script that calls tools, and Pi's codemode does the same in JavaScript. In both, only the script's output returns to the model, so many tool calls produce one result in the context.</li>
-      <li><strong>Protecting the prompt cache.</strong> Hermes freezes its system prompt and puts changing text in the user message. Pi appends prompt and tool changes as new messages, "so earlier messages stay cached", as its MCP docs put it. Deep Agents puts memory after its caching layer, with a cache breakpoint of its own.</li>
-      <li><strong>Children start empty.</strong> A Hermes child sees only the goal and the context its parent writes. A Deep Agents child starts with the task description alone. Pi's example starts each child as a new process with no saved session. All three hand back a short result instead of the child's whole transcript.</li>
-      <li><strong>Defaults move with evidence.</strong> Deep Agents dropped its long prompt and its default todo tool after experiments showed no gain. Hermes removed its step limit because limits "caused silent mid-task truncation", and it dropped warnings about a filling context because they made models give up early.</li>
+      <li><strong>Skills and project instructions.</strong> All three list skill names and descriptions in the prompt and load the full file on demand, and all three can read <code>AGENTS.md</code>. Time spent writing these files pays off on any of them.</li>
+      <li><strong>Compaction loses detail in the same way.</strong> All three summarize old history with a model call and keep the originals outside the context. So a fact the agent needs for the whole run should live in a file or in the instructions, not only in the conversation.</li>
+      <li><strong>No tight step limit.</strong> Hermes sets none within a turn by default, Pi's source shows none, and Deep Agents allows 9,999 steps. If you need a step or cost budget, you add it (<a href="15-reliability.html#infinite-loops">chapter 15</a>).</li>
+      <li><strong>Defaults change with evidence.</strong> Deep Agents dropped its long prompt and its default todo tool after experiments. Hermes removed its step limit because limits "caused silent mid-task truncation". Treat a framework default as a starting guess, and measure it on your own tasks.</li>
     </ul>
 
-    <h3>Where they diverge</h3>
+    <h3>What changes your design</h3>
     <ul>
-      <li><strong>How much ships in the box.</strong> Hermes builds in memory, subagents, approvals, schedules, and a task queue. Deep Agents builds in subagents, and offers memory and approvals as options you switch on in code. Pi ships a loop, four tools, sessions, and skills, and leaves the rest to extensions and outside tools.</li>
-      <li><strong>Planning.</strong> Hermes ships a todo tool but, in v0.22.2, hides it behind tool search. Deep Agents made its todo tool opt-in after a test showed no gain. Pi rejects todo tools and puts plans in files. Deep Agents never checks whether the agent follows its list, and the Hermes plan mode is enforced only by its prompt.</li>
-      <li><strong>Subagents.</strong> Hermes runs children in the background and returns each result as a new message. Deep Agents makes the parent wait, and lets children share its files. Pi leaves subagents out, and its creator argues against them for most uses.</li>
-      <li><strong>Memory.</strong> Hermes keeps a tiny memory that the agent and a review step write, plus keyword search over all past sessions. Deep Agents treats memory as files in a store, edited with the normal file tools. Pi has no memory system at all.</li>
-      <li><strong>Where safety lives.</strong> Hermes checks shell commands against patterns, with a model as the default reviewer. Deep Agents pauses before the tools you name and checks file paths, but its path rules do not cover the shell. Pi checks nothing by default and tells you to use a container. In the terms of <a href="10-sandboxing.html#permission-vs-boundary">chapter 10</a>, Hermes and Deep Agents ship enforced gates, while Pi ships hooks for building them.</li>
-      <li><strong>State and replay.</strong> Hermes stores messages as database rows. With a checkpointer, Deep Agents saves typed state after each step, so a run can resume or go back to an earlier step. Pi stores a tree of entries, so you can branch from any point.</li>
-      <li><strong>Long-running work.</strong> Hermes builds a ladder into the product: judge-driven loops, timers, cron, and a Kanban queue. Deep Agents relies on LangGraph checkpoints and remote background subagents. Pi keeps its CLI small and puts long-running work in an experimental separate package.</li>
+      <li><strong>Shared files between children.</strong> Deep Agents children share the parent's files by default, so two children writing the same path can collide. Hermes children get their own terminal sessions, and optionally their own git worktrees. If children write files, give each one its own workspace or add a merge step.</li>
+      <li><strong>Who writes the approval policy.</strong> Hermes ships a policy: command patterns, a model reviewer, and hard limits underneath. But it skips the review inside a container backend, so check that its policy matches yours. Deep Agents ships the pause and resume, and you choose which tools pause. Pi ships hooks and no policy, so you write the policy yourself (<a href="11-human-in-the-loop.html#approval-gates">chapter 11</a>).</li>
+      <li><strong>Where durability lives.</strong> Hermes builds it into the product: saved sessions, cron jobs, a work queue, and a delivery ledger. Deep Agents gets it from LangGraph once you pass a checkpointer. Pi saves sessions, but resuming a turn that crashed is the goal of an experimental separate package. For unattended nightly runs, that difference decides how much you build (<a href="12-long-running.html#resumability">chapter 12</a>).</li>
+      <li><strong>Memory.</strong> Hermes gives you a small always-on memory that the agent edits. Deep Agents gives you file storage that you scope per user or per assistant. Pi gives you plain files. Decide what your agent must remember before you pick, because the three need very different amounts of work.</li>
+      <li><strong>Plans are advice.</strong> Deep Agents never checks its todo list, the Hermes plan mode relies only on its prompt, and Pi keeps plans in plain files. If a plan needs approval before work starts, build that gate yourself (<a href="06-planning.html#todo-state">chapter 6</a>).</li>
     </ul>
   </section>
 </main>

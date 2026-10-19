@@ -1,7 +1,7 @@
 /* Comparison table (chapter 17b) and the support-level pills and question lists shared with chapter 17. */
 
 /* Support levels: the text is the label; color and border style only help scanning. */
-.w-pill.sl { vertical-align: .08em; font-size: .78rem; }
+.w-pill.sl { vertical-align: .08em; }
 .w-pill.sl-builtin  { --c: var(--ok);  --c-bd: var(--ok);  --c-bg: color-mix(in srgb, var(--ok) 10%, transparent); }
 .w-pill.sl-optional { --c: var(--ok);  --c-bd: var(--ok);  --c-bg: transparent; border-style: dashed; }
 .w-pill.sl-ext      { --c: var(--mid); --c-bd: var(--mid); --c-bg: transparent; border-style: dashed; }
@@ -15,6 +15,10 @@ dl.qa dt { display: flex; flex-wrap: wrap; gap: .35rem .55rem; align-items: base
 dl.qa dt:first-child { margin-top: 0; }
 dl.qa dd { margin: 0; }
 dl.qa dd ul { margin: .4rem 0 0; }
+dl.qa dd p { margin: 0 0 .5rem; }
+dl.qa dd p:last-child { margin-bottom: 0; }
+/* Secondary block for default numbers, so the main answer stays readable */
+.qa-note { font-size: .9rem; color: var(--text-2); padding-left: .7rem; border-left: 2px solid var(--border-strong); }
 .sl-legend { list-style: none; padding: 0; }
 .sl-legend li { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: .7rem; align-items: baseline; margin: .4rem 0; }
 .sl-legend .w-pill { text-align: center; }
@@ -31,8 +35,8 @@ table.patch-map code { overflow-wrap: normal; }
 
 /* The table: sticky row headers so the concept stays visible while scrolling sideways */
 .cmp-wrap { margin-top: .6rem; }
-table.cmp thead th { white-space: normal; font-size: .78rem; }
-table.cmp thead th small { display: block; font-size: .78rem; letter-spacing: .02em; text-transform: none; }
+table.cmp thead th { white-space: normal; }
+table.cmp thead th small { display: block; font-size: .82rem; letter-spacing: .02em; text-transform: none; }
 table.cmp tbody th[scope="row"], table.cmp thead th:first-child {
   position: sticky; left: 0; z-index: 1;
   width: 8.5rem; min-width: 8.5rem;
@@ -42,9 +46,9 @@ table.cmp tbody th[scope="row"], table.cmp thead th:first-child {
 table.cmp td { min-width: 15rem; }
 table.cmp td .cell { margin: .3rem 0 .25rem; }
 table.cmp td details { font-size: .84rem; color: var(--text-2); }
-table.cmp td details > summary { cursor: pointer; color: var(--link); font-weight: 600; font-size: .8rem; }
+table.cmp td details > summary { cursor: pointer; color: var(--link); font-weight: 600; font-size: .82rem; }
 table.cmp td details p { margin: .35rem 0; }
 @media (max-width: 640px) {
-  table.cmp tbody th[scope="row"], table.cmp thead th:first-child { width: 6.2rem; min-width: 6.2rem; font-size: .8rem; }
+  table.cmp tbody th[scope="row"], table.cmp thead th:first-child { width: 6.2rem; min-width: 6.2rem; font-size: .82rem; }
   table.cmp td { min-width: 13rem; }
 }
