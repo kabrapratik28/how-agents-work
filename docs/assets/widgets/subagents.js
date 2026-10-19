@@ -209,8 +209,14 @@
     return { text: text, tokens: REPORT_TOKENS[kind] };
   }
 
-  // One agent doing the same research in one loop (for comparison). careful: notes plus cleared tool outputs.
-  function baseline(careful) {
+  // One agent doing the same work in one loop (for comparison). careful: notes plus cleared tool outputs.
+  // It does each scenario's own steps, but none of the subagent overhead (no briefs, no stale or refused edits, no failed try).
+  function baseline(careful, sc) {
+    var plan = {};
+    ORDER.forEach(function (id) {
+      plan[id] = childSteps(id, sc === 'failure' ? 'clean' : sc, { schedule: 'sequential', ownership: false }, 2)
+        .filter(function (st) { return !st.refused && !/^notes\//.test(st.arg); });
+    });
     var base = P.singlePrefix + P.request;
     var hist = [];
     var calls = [];
@@ -221,7 +227,7 @@
     }
     var seen = {};
     ORDER.forEach(function (id) {
-      RESEARCH[id].forEach(function (st) {
+      plan[id].forEach(function (st) {
         if (!st.rediscovery || seen[st.arg]) return;
         seen[st.arg] = true;
         call(P.callOut, stepSec(st));
@@ -230,7 +236,7 @@
     });
     ORDER.forEach(function (id) {
       var mine = [];
-      RESEARCH[id].forEach(function (st) {
+      plan[id].forEach(function (st) {
         if (st.rediscovery) return;
         call(P.callOut, stepSec(st));
         var r = { tokens: st.tokens };
@@ -483,7 +489,8 @@
         }
       } else {
         outcome = { status: 'ok', answer: ANSWERS.clean };
-        notesLine = 'The children finished sooner and kept the parent\'s context small. But together they used more tokens than one careful agent would.';
+        notesLine = (parallel ? 'The children ran at the same time, so the answer came sooner' : 'The children ran one after another, so the answer took longer') +
+          (transcripts ? ', and their whole transcripts filled the parent\'s context.' : ', and only three short reports reached the parent.');
       }
     }
     if (outcome.status !== 'waiting') {
@@ -530,7 +537,7 @@
       lostDetail: lostDetail,
       needsChoice: needsChoice,
       outcome: outcome,
-      baselines: { naive: baseline(false), careful: baseline(true) }
+      baselines: { naive: baseline(false, sc), careful: baseline(true, sc) }
     };
   }
 
@@ -558,7 +565,7 @@
 
     var frame = h('div', { class: 'w-frame sa' });
     frame.appendChild(h('div', { class: 'w-head' },
-      h('p', { class: 'w-title', text: root.getAttribute('data-title') || 'A parent agent hands out three research tasks' }),
+      h('p', { class: 'w-title', text: root.getAttribute('data-title') || 'A parent delegates three tasks and receives the results' }),
       h('p', { class: 'w-sub', text: 'Times and token counts are illustrative.' })));
     var body = h('div', { class: 'w-body' });
     frame.appendChild(body);
@@ -583,6 +590,13 @@
       });
       return group;
     }
+    body.appendChild(h('div', { class: 'sa-controls' },
+      seg('What comes back:', 'results', [['summaries', 'Short reports'], ['transcripts', 'Full transcripts']]),
+      seg('Children run:', 'schedule', [['parallel', 'At the same time'], ['sequential', 'One after another']])));
+
+    // The scenario's own option lives in the narration box, so the first screen has only two toggles.
+    var narration = h('div', { class: 'w-narration sa-narration', 'aria-live': 'polite' });
+    var say = h('div');
     var optId = AC.uid('sa-opt');
     var optBox = h('input', { type: 'checkbox', id: optId, on: { change: function () {
       if (st.scenario === 'coupled') st.ownership = optBox.checked; else st.refs = optBox.checked;
@@ -590,30 +604,21 @@
     } } });
     var optText = h('span');
     var optLabel = h('label', { class: 'w-toggle sa-opt', for: optId }, optBox, optText);
-    body.appendChild(h('div', { class: 'sa-controls' },
-      seg('What comes back:', 'results', [['summaries', 'Short reports'], ['transcripts', 'Full transcripts']]),
-      seg('Children run:', 'schedule', [['parallel', 'At the same time'], ['sequential', 'One after another']]),
-      optLabel));
-
-    var narration = h('div', { class: 'w-narration sa-narration', 'aria-live': 'polite' });
+    narration.appendChild(say);
+    narration.appendChild(optLabel);
     var picture = h('div', { class: 'sa-picture' });
-    var stats = h('div', { class: 'sa-stats' });
-    var compare = h('p', { class: 'sa-compare' });
-    var tlPanel = h('div', { class: 'w-panel sa-detail' });
-    var ctxPanel = h('div', { class: 'w-panel sa-detail' });
-    var tokDetails = h('details', { class: 'sa-more' }, h('summary', { text: 'Where the tokens went' }));
-    var tokBody = h('div');
-    tokDetails.appendChild(tokBody);
-    var logDetails = h('details', { class: 'sa-more' }, h('summary', { text: 'What happened, step by step' }));
-    var logBody = h('div');
-    logDetails.appendChild(logBody);
+    var story = h('div', { class: 'sa-story' });
+    var details = h('details', { class: 'sa-more' }, h('summary', { text: 'Details' }));
+    var tlBox = h('div', { class: 'sa-detail' });
+    var ctxBox = h('div', { class: 'sa-detail' });
+    var tokBox = h('div', { class: 'sa-detail' });
+    var logBox = h('div', { class: 'sa-detail' });
+    details.appendChild(h('div', { class: 'w-grid cols-2' }, tlBox, ctxBox));
+    details.appendChild(h('div', { class: 'w-grid cols-2 sa-row' }, tokBox, logBox));
     body.appendChild(narration);
     body.appendChild(picture);
-    body.appendChild(stats);
-    body.appendChild(compare);
-    body.appendChild(h('div', { class: 'w-grid cols-2 sa-row' }, tlPanel, ctxPanel));
-    body.appendChild(tokDetails);
-    body.appendChild(logDetails);
+    body.appendChild(story);
+    body.appendChild(details);
     root.appendChild(frame);
 
     function title(panel, text) { panel.textContent = ''; panel.appendChild(h('p', { class: 'w-panel-title', text: text })); }
@@ -624,72 +629,72 @@
 
     function paintNarration(r) {
       var hadFocus = narration.contains(document.activeElement) ? document.activeElement.getAttribute('data-choice') : null;
-      narration.textContent = '';
+      say.textContent = '';
       var o = r.options;
       var text = {
         clean: 'The parent writes one brief per queue. Each child researches its queue in its own loop and sends back a short report.',
         failure: 'The SQS child failed: its doc pages timed out three times in a row, so its loop stopped.',
-        coupled: o.ownership ? 'Each child also writes a small test script, and now your code blocks writes outside each child\'s own folder.' : 'Each child also writes a small test script. Two of them change the same setting in app/settings.py, and nothing stops them.',
+        coupled: 'Each child also writes a small test script. Two of them change the same setting in app/settings.py.',
         disagree: 'The reports disagree. The SQS child says a FIFO queue makes duplicate emails impossible, and the other two say any queue can deliver twice.',
-        lost: o.refs ? 'The brief now asks each child to list risks, with the file and line where it found them.' : 'The brief asks only for a short summary. Watch what the Redis child leaves out.'
+        lost: o.refs ? 'Now the brief also asks for risks, with the file and line where each one was found.' : 'The brief asks only for a short summary. Watch what the Redis child leaves out.'
       }[o.scenario];
-      narration.appendChild(h('p', { class: 'sa-say', text: text }));
+      say.appendChild(h('p', { class: 'sa-say', text: text }));
       var opts = { failure: ['retry', 'partial', 'ask'], disagree: ['confident', 'vote', 'evidence'] }[o.scenario];
       if (!opts) return;
-      narration.appendChild(h('p', { class: 'sa-say sa-ask', text: o.scenario === 'failure' ? 'What should happen next?' : 'How should the parent settle it?' }));
+      say.appendChild(h('p', { class: 'sa-say sa-ask', text: o.scenario === 'failure' ? 'What should happen next?' : 'How should the parent settle it?' }));
       var box = h('div', { class: 'sa-choices', role: 'group', 'aria-label': 'Your decision' });
       opts.forEach(function (key) {
         box.appendChild(h('button', { class: 'w-btn' + (st.choice ? '' : ' primary'), type: 'button', 'data-choice': key, 'aria-pressed': String(st.choice === key), text: CHOICE_LABEL[key],
           on: { click: function () { st.choice = key; paint(); } } }));
       });
-      narration.appendChild(box);
+      say.appendChild(box);
       if (hadFocus) {
         var again = box.querySelector('[data-choice="' + hadFocus + '"]');
         if (again) again.focus();
       }
     }
 
-    function childBox(r, c, i) {
+    function childBox(r, c) {
       var runs = r.agents.filter(function (a) { return a.id === c.child; })[0].runs;
       var shown = runs.filter(function (x) { return x.returned; })[0] || runs[runs.length - 1];
       var status = runs.length > 1 ? ['mid', 'Failed, then retried'] : runs[0].status === 'failed' ? ['bad', 'Failed'] : ['ok', 'Done'];
-      if (r.conflict && r.conflict.broken.indexOf(c.child) !== -1) status = ['bad', 'Its test script broke later'];
+      if (r.conflict && r.conflict.broken.indexOf(c.child) !== -1) status = ['bad', 'Its test broke later'];
       var chain = r.timing.chains.filter(function (x) { return x.child === c.child; })[0];
       var tTok = sum(shown.transcript, function (e) { return e.tokens; });
       var back;
-      if (!shown.returned) back = 'Sends back: nothing yet';
-      else if (r.options.results === 'transcripts') back = 'Sends back: its whole transcript, ' + fmt(tTok) + ' tokens';
-      else back = shown.status === 'failed' ? 'Sends back: a short failure note' : 'Sends back: a short report, ' + fmt(shown.reportTokens) + ' tokens';
+      if (!shown.returned) back = 'Nothing yet';
+      else if (r.options.results === 'transcripts') back = 'Its whole transcript: ' + fmt(tTok) + ' tokens';
+      else back = shown.status === 'failed' ? 'A short failure note' : 'A short report: ' + fmt(shown.reportTokens) + ' tokens';
       var box = h('div', { class: 'sa-box sa-kid' },
-        h('p', { class: 'sa-box-title' }, h('span', { text: c.label + ' child' }), h('span', { class: 'w-status ' + status[0], text: status[1] })),
-        h('p', { class: 'sa-box-line', text: 'Took ' + mins(chain.duration) }),
-        h('p', { class: 'sa-box-line', text: back }));
+        h('p', { class: 'sa-box-title' }, h('span', { text: c.label }), h('span', { class: 'w-status ' + status[0], text: status[1] })),
+        h('p', { class: 'sa-box-line', text: 'Worked for ' + mins(chain.duration) }),
+        h('p', { class: 'sa-back' }, h('span', { class: 'sa-back-label', text: 'Sends back: ' }), back));
       var dl = h('dl', { class: 'w-kv sa-kv' });
       KV.forEach(function (row) {
         dl.appendChild(h('dt', { text: row[1] }));
         dl.appendChild(h('dd', { text: row[0] === 'tools' ? c.tools.join(', ') : c[row[0]] }));
       });
-      box.appendChild(h('details', { class: 'sa-small' }, h('summary', { text: 'What it was told' }), dl));
       var ol = h('ol', { class: 'sa-entries' });
       shown.transcript.forEach(function (e) {
         ol.appendChild(h('li', { class: e.kind }, h('span', { class: 'sa-entry-text', text: e.text }), h('span', { class: 'sa-tok', text: fmt(e.tokens) })));
       });
-      box.appendChild(h('details', { class: 'sa-small' }, h('summary', { text: 'Its transcript' + (shown.attempt > 1 ? ' (second try)' : '') + ': ' + shown.transcript.length + ' entries' }), ol));
+      box.appendChild(h('details', { class: 'sa-small' }, h('summary', { text: 'Its brief and transcript' }), dl,
+        h('p', { class: 'sa-small-title', text: 'Transcript' + (shown.attempt > 1 ? ' of the second try' : '') + ', ' + shown.transcript.length + ' entries:' }), ol));
       return box;
     }
 
     function paintPicture(r) {
       picture.textContent = '';
       picture.appendChild(h('div', { class: 'sa-box sa-parent' },
-        h('p', { class: 'sa-box-title' }, h('span', { class: 'badge model', text: 'Parent' }), h('span', { text: 'Writes one brief per queue, then waits for the results' }))));
+        h('p', { class: 'sa-box-title' }, h('span', { class: 'badge model', text: 'Parent' }), h('span', { text: 'Writes one brief per queue and hands each to a child' }))));
       picture.appendChild(h('p', { class: 'sa-arrow', 'aria-hidden': 'true', text: '↓' }));
       var kids = h('div', { class: 'sa-kids' });
-      r.contracts.forEach(function (c, i) { kids.appendChild(childBox(r, c, i)); });
+      r.contracts.forEach(function (c) { kids.appendChild(childBox(r, c)); });
       picture.appendChild(kids);
-      picture.appendChild(h('p', { class: 'sa-arrow', 'aria-hidden': 'true', text: '↓' }));
+      picture.appendChild(h('p', { class: 'sa-arrow sa-arrow-label', text: '↓ the results go back to the parent ↓' }));
       var s = STATUS[r.outcome.status];
       var ans = h('div', { class: 'sa-box sa-answer-box' },
-        h('p', { class: 'sa-box-title' }, h('span', { text: 'The parent\'s answer' }), h('span', { class: 'w-status ' + s[0], text: s[1] })));
+        h('p', { class: 'sa-box-title' }, h('span', { text: r.outcome.status === 'waiting' ? 'The parent\'s answer' : 'The parent\'s answer, after ' + mins(r.timing.wallClock) }), h('span', { class: 'w-status ' + s[0], text: s[1] })));
       if (r.outcome.status === 'waiting') {
         ans.appendChild(h('p', { class: 'sa-box-line', text: 'No answer yet. Make the decision above.' }));
       } else {
@@ -700,20 +705,27 @@
       picture.appendChild(ans);
     }
 
-    function paintStats(r) {
-      stats.textContent = '';
+    function paintStory(r) {
+      story.textContent = '';
+      var parentTok = r.tokens.orchestration;
+      var kidsTok = r.tokens.total - parentTok;
+      var careful = r.baselines.careful.tokens;
+      var scale = Math.max(r.tokens.total, careful) * 1.04;
       var waiting = r.outcome.status === 'waiting';
-      [[mins(r.timing.wallClock), waiting ? 'so far, before your decision' : 'until the parent answers'],
-        [fmt(r.tokens.total), 'tokens, all agents together'],
-        [fmt(r.parentContext.tokens), waiting ? 'tokens the parent sees so far' : 'tokens the parent sees at the end']].forEach(function (x) {
-        stats.appendChild(h('span', { class: 'sa-stat' }, h('span', { class: 'sa-stat-num', text: x[0] }), h('span', { class: 'sa-stat-label', text: x[1] })));
-      });
-      var c = r.baselines.careful;
-      compare.textContent = 'For comparison, one careful agent doing the same research takes ' + mins(c.wallClock) + ' and ' + fmt(c.tokens) + ' tokens.' + (r.timing.humanWait ? ' The times leave out how long you took to answer.' : '');
+      story.appendChild(h('p', { class: 'sa-story-line', text: (waiting ? 'So far the agents have used ' : 'Together the agents used ') + fmt(r.tokens.total) + ' tokens, one careful agent would use ' + fmt(careful) + ', and the parent itself saw only ' + fmt(r.parentContext.tokens) + ' of them.' }));
+      var bar = h('div', { class: 'sa-tokbar', role: 'img', 'aria-label': 'Tokens: the parent used ' + fmt(parentTok) + ', the children ' + fmt(kidsTok) + '. One careful agent would use ' + fmt(careful) + '.' },
+        h('span', { class: 'sa-seg parent', style: { width: (100 * parentTok / scale) + '%' } }),
+        h('span', { class: 'sa-seg kids', style: { width: (100 * kidsTok / scale) + '%' } }),
+        h('span', { class: 'sa-mark', style: { left: (100 * careful / scale) + '%' } }));
+      story.appendChild(bar);
+      story.appendChild(h('p', { class: 'sa-legend', 'aria-hidden': 'true' },
+        h('span', null, h('i', { class: 'sa-sw parent' }), 'the parent'),
+        h('span', null, h('i', { class: 'sa-sw kids' }), 'the children'),
+        h('span', null, h('i', { class: 'sa-sw mark' }), 'one careful agent')));
     }
 
     function paintTimeline(r) {
-      title(tlPanel, 'How the time adds up');
+      title(tlBox, 'How the time adds up');
       var tm = r.timing;
       var wall = tm.wallClock;
       var rows = [['parent', 'Parent']].concat(ORDER.map(function (id) { return [id, CHILDREN[id].short]; }));
@@ -728,33 +740,32 @@
         box.appendChild(h('div', { class: 'sa-tl-row' }, h('span', { class: 'sa-tl-label', text: row[1] }), track));
       });
       var axis = h('div', { class: 'sa-track sa-axis', 'aria-hidden': 'true' });
-      var step = wall > 420 ? 120 : 60;
+      var step = wall > 600 ? 180 : wall > 240 ? 120 : 60;
       for (var t = 0; t <= wall; t += step) axis.appendChild(h('span', { class: t / wall > 0.85 ? 'end' : null, style: { left: (100 * t / wall) + '%' }, text: (t / 60) + (t ? ' min' : '') }));
       box.appendChild(h('div', { class: 'sa-tl-row' }, h('span', { class: 'sa-tl-label' }), axis));
-      tlPanel.appendChild(box);
+      tlBox.appendChild(box);
       var slow = CHILDREN[tm.slowest].short;
-      tlPanel.appendChild(h('p', { class: 'sa-line', text: r.options.schedule === 'parallel'
+      tlBox.appendChild(h('p', { class: 'sa-line', text: r.options.schedule === 'parallel'
         ? 'The children overlap, so their part takes as long as the slowest one (' + slow + '): ' + mins(tm.childrenPhase) + '. One after another would take ' + mins(tm.sequentialPhase) + '.'
         : 'The children run one after another, so their times add up: ' + mins(tm.childrenPhase) + '. At the same time would take ' + mins(tm.parallelPhase) + '.' }));
-      tlPanel.appendChild(h('p', { class: 'w-note', text: 'Assumes ' + tm.assumption.charAt(0).toLowerCase() + tm.assumption.slice(1) }));
+      if (tm.humanWait) tlBox.appendChild(h('p', { class: 'sa-line', text: 'This leaves out how long you took to answer.' }));
+      tlBox.appendChild(h('p', { class: 'w-note', text: 'Assumes ' + tm.assumption.charAt(0).toLowerCase() + tm.assumption.slice(1) }));
     }
 
     function paintContext(r) {
-      title(ctxPanel, r.outcome.status === 'waiting' ? 'What the parent sees so far' : 'What the parent sees at the end');
+      title(ctxBox, r.outcome.status === 'waiting' ? 'What the parent sees so far' : 'What the parent sees at the end');
       var ol = h('ol', { class: 'sa-ctx' });
       r.parentContext.blocks.forEach(function (b) {
         var p = PILL[b.kind] || ['', b.kind];
         ol.appendChild(h('li', { class: b.kind === 'pending' ? 'pending' : null },
           h('span', { class: 'w-pill ' + p[0], text: p[1] }), h('span', { class: 'sa-ctx-label', text: b.label }), h('span', { class: 'sa-tok', text: fmt(b.tokens) })));
       });
-      ctxPanel.appendChild(ol);
-      ctxPanel.appendChild(h('p', { class: 'sa-line', text: 'Total: ' + fmt(r.parentContext.tokens) + ' tokens.' }));
+      ctxBox.appendChild(ol);
     }
 
     function paintTokens(r) {
-      tokBody.textContent = '';
+      title(tokBox, 'Where the tokens went');
       var b = r.tokens.breakdown;
-      var total = r.tokens.total;
       var t1 = h('table', { class: 'sa-table' }, h('caption', { class: 'visually-hidden', text: 'Tokens used by every call of every agent' }));
       var tb = h('tbody');
       [['The parent\'s own calls: writing briefs, combining results', b.orchestration],
@@ -764,31 +775,30 @@
         ['The research itself: docs, notes, reports', b.work]].forEach(function (row) {
         tb.appendChild(h('tr', null, h('th', { scope: 'row', text: row[0] }), h('td', { text: fmt(row[1]) })));
       });
-      tb.appendChild(h('tr', { class: 'sa-total' }, h('th', { scope: 'row', text: 'Total' }), h('td', { text: fmt(total) })));
+      tb.appendChild(h('tr', { class: 'sa-total' }, h('th', { scope: 'row', text: 'Total' }), h('td', { text: fmt(r.tokens.total) })));
       t1.appendChild(tb);
-      tokBody.appendChild(t1);
+      tokBox.appendChild(t1);
       var bl = r.baselines;
-      tokBody.appendChild(h('p', { class: 'sa-line', text: 'The same research done by one agent takes ' + fmt(bl.careful.tokens) + ' tokens if it saves notes and clears old tool output, or ' + fmt(bl.naive.tokens) + ' tokens if it keeps its whole history.' }));
+      tokBox.appendChild(h('p', { class: 'sa-line', text: 'One agent doing the same research takes ' + fmt(bl.careful.tokens) + ' tokens and ' + mins(bl.careful.wallClock) + ' if it saves notes and clears old tool output. It takes ' + fmt(bl.naive.tokens) + ' tokens and ' + mins(bl.naive.wallClock) + ' if it keeps its whole history.' }));
     }
 
     function paintLog(r) {
-      logBody.textContent = '';
+      title(logBox, 'What happened, step by step');
       var ol = h('ol', { class: 'w-log sa-log' });
       r.events.forEach(function (e) { ol.appendChild(h('li', null, badge(e.actor, e.label), e.text)); });
-      logBody.appendChild(ol);
+      logBox.appendChild(ol);
     }
 
     function paint() {
       var r = run(st);
       tabs.querySelectorAll('.w-tab').forEach(function (t) { t.setAttribute('aria-pressed', String(t.getAttribute('data-key') === st.scenario)); });
       body.querySelectorAll('.sa-seg').forEach(function (b) { b.setAttribute('aria-pressed', String(st[b.getAttribute('data-key')] === b.getAttribute('data-value'))); });
-      var hasOpt = st.scenario === 'coupled' || st.scenario === 'lost';
-      optLabel.hidden = !hasOpt;
-      optText.textContent = st.scenario === 'coupled' ? 'Your code blocks writes outside each child\'s own folder' : 'The brief asks for risks, with file and line';
+      optLabel.hidden = !(st.scenario === 'coupled' || st.scenario === 'lost');
+      optText.textContent = st.scenario === 'coupled' ? 'Let your code block writes outside each child\'s own folder' : 'Ask for risks, with file and line, in the brief';
       optBox.checked = st.scenario === 'coupled' ? st.ownership : st.refs;
       paintNarration(r);
       paintPicture(r);
-      paintStats(r);
+      paintStory(r);
       paintTimeline(r);
       paintContext(r);
       paintTokens(r);

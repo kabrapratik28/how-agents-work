@@ -1,6 +1,5 @@
 /* skills widget: narration first, then the two main panels, then calmer details. No text under 13px. */
 .sk-toggles { display: flex; flex-wrap: wrap; gap: .5rem 1.4rem; margin: 0 0 .7rem; font-size: .92rem; }
-.sk-toggles .w-toggle[hidden] { display: none; }
 .sk-request { margin: 0 0 .8rem; font-size: 1rem; }
 .sk-stepper .sk-say { margin: 0; font-size: 1.05rem; line-height: 1.55; }
 .sk-decision { margin: .55rem 0 0; padding: .4rem .6rem; font: .86rem/1.45 var(--mono); background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }

@@ -193,7 +193,7 @@
           ? 'The script runs in the container, and what it prints joins the code the model already read.'
           : 'The script runs in the container, and only what it prints comes back. The model never sees the script\'s code.');
       modelStep('The model\'s view now includes the script\'s output.', 'Answers', 'It reports what it did and asks for no more tools.', null);
-      push('stop', 'runtime', 'Stops the loop', 'No tool requests, so the loop ends. Every request in this run went through the same check.', 'Stopped the loop');
+      push('stop', 'runtime', 'Stops the loop', 'The model asked for no more tools, so the loop ends.', 'Stopped the loop');
     } else {
       var curl = modelStep(first, 'Asks to run the setup command',
         upfront
@@ -203,7 +203,7 @@
       var vc = checkStep(curl, 'A download piped into a shell is not on the allowlist, so your code refuses it.');
       actStep(curl, vc, null, '', 'It returns the refusal as the tool result, so the model can react.');
       modelStep('The model\'s view now includes the refusal.', 'Answers', 'It reports the blocked step and asks for no more tools.', null);
-      push('stop', 'runtime', 'Stops the loop', 'No tool requests, so the loop ends. The curl command never ran.', 'Stopped the loop');
+      push('stop', 'runtime', 'Stops the loop', 'The model asked for no more tools, so the loop ends. The curl command never ran.', 'Stopped the loop');
     }
     return steps;
   }

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model capability vs agent architecture · How AI Agents Work</title>
+<meta name="description" content="Twelve levers that make an agent better, what each one changes, and how to attribute a gain with paired trials, equal budgets, and ablations.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 18 · Thinking like a designer</p>
+    <h1>Model capability vs agent architecture</h1>
+    <p class="lede">When an agent improves, the gain can come from the model or from a dozen other levers. Only a controlled comparison tells you which one.</p>
+    <div class="loop-map" data-focus="all"></div>
+  </header>
+
+  <section id="the-question">
+    <h2>Patch got better. Why?</h2>
+    <p>Last month, Patch solved 62% of its 50-bug suite. This month it solves 74%. Three things changed in between. The provider shipped a new model version. A teammate added a <code>run_tests</code> tool that returns only the failing tests. And the compaction summary now keeps the last test output.</p>
+    <p>Everyone has a favorite explanation, but nobody has evidence yet. The answer matters, because each kind of gain has a different future:</p>
+    <ul>
+      <li>A better model costs you nothing, but your competitors get it too, and the next version can take it away.</li>
+      <li>Better architecture costs engineering time, and it may stop paying off as models improve.</li>
+      <li>Some gains come from spending more tokens, so they show up on the bill.</li>
+    </ul>
+  </section>
+
+  <section id="levers">
+    <h2>Twelve levers, and how to test each one</h2>
+    <p>Patch's 12-point jump could have come from any of twelve levers. Each lever changes one part of the loop, which tells you what to hold fixed when you test it.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>Every lever changes one of three things: what the model is, what it sees, or what happens to its output.</p>
+    </aside>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>The twelve levers</caption>
+        <thead><tr><th scope="col">Lever</th><th scope="col">What it changes</th><th scope="col">How to test it</th></tr></thead>
+        <tbody>
+          <tr id="better-model"><th scope="row">Better model</th><td>The weights (the numbers the model learned in training), so the same context gets different choices</td><td>Swap the model with everything else fixed, then retune the prompt and test again</td></tr>
+          <tr id="inference-compute"><th scope="row">More inference-time compute</th><td>Reasoning tokens, attempts, or steps spent per task</td><td>Raise the budget in steps, and plot success against cost</td></tr>
+          <tr id="better-prompt"><th scope="row">Better prompt</th><td>The instructions, including tool descriptions</td><td>Run old and new prompts on tasks you did not read while writing them</td></tr>
+          <tr id="more-context"><th scope="row">More context</th><td>How much the model sees: history, whole files, window size</td><td>Check failed traces for the missing fact, then vary the amount</td></tr>
+          <tr id="better-retrieval"><th scope="row">Better retrieval</th><td>Which stored items reach the context</td><td>Score retrieval alone, then insert the right item by hand and see if the agent succeeds</td></tr>
+          <tr id="better-memory"><th scope="row">Better memory</th><td>What carries over from one run to the next</td><td>Run a sequence of tasks with memory kept and with memory wiped</td></tr>
+          <tr id="better-tools"><th scope="row">Better tools</th><td>Which actions exist, and what comes back</td><td>Remove the tool or restore the old one, and check that the model uses it</td></tr>
+          <tr id="better-environment"><th scope="row">Better environment</th><td>Packages, test speed, error messages, repo docs</td><td>Sort failures into environment and agent failures. If the human's own fix also fails, the task is broken</td></tr>
+          <tr id="better-verification"><th scope="row">Better verification</th><td>What counts as done</td><td>Score the checker against known outcomes: what bad work does it accept?</td></tr>
+          <tr id="better-loop"><th scope="row">Better agent loop</th><td>Stop rules, budgets, retries</td><td>Sort runs by how they ended, and test the logic with a scripted model that gives fixed replies</td></tr>
+          <tr id="better-planning"><th scope="row">Better planning</th><td>An explicit list of intended steps</td><td>Remove the planning tool, and split results by task length</td></tr>
+          <tr id="multiple-agents"><th scope="row">Multiple agents</th><td>More loops, each with its own context and tools</td><td>Compare with one agent that gets the same model and the same total tokens</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>A lever rarely changes only one thing. The extra changes that ride along are called confounds, because they could explain the gain instead. These are the ones that catch people most often.</p>
+    <p><strong>Compute rides along with almost everything.</strong> Planning adds calls, extra agents and extra context add tokens, and a bigger step budget buys success directly. So compare designs at equal cost. Extra attempts also help only if a check can pick the one that worked.</p>
+    <p><strong>Prompts and models depend on each other.</strong> A prompt tuned for one model can hurt another. A new tool brings a new description, so it is also a prompt change.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <p><strong>Deep Agents</strong> (0.7.28) keeps prompt and tool-description profiles for each model. LangChain reported that these profiles lifted GPT-5.3 Codex from 33% to 53% on a curated subset of tau2-bench. Claude Opus 4.7 went from 43% to 53%, with no change to either model. This is the builder's own report on a subset it chose, so replicate it before you rely on it.</p>
+    </aside>
+    <p><strong>More context can hurt.</strong> Irrelevant text distracts the model. A bigger window also delays compaction, so the real gain may be fewer lossy summaries.</p>
+    <p><strong>Memory breaks independent trials.</strong> A reset between trials removes the very effect you want to measure, so test memory on a sequence of tasks. Watch for memory that stores the answers to eval tasks.</p>
+    <p><strong>Environment fixes change the test.</strong> When impossible tasks become solvable, the score rises with no change to the agent. Report those gains separately.</p>
+    <p><strong>A checker cannot grade itself.</strong> If one check both stops the loop and scores the eval, the eval shares its blind spots. Self-checks are weak too: Anthropic found that "agents reliably skew positive when grading their own work".</p>
+    <p><strong>Planning tools cost tokens.</strong> They should help long tasks and cost short ones, and a stronger model may plan well without one.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <p><strong>Deep Agents</strong> shipped a todo-list tool by default until version 0.7.0. Then LangChain ran three models with and without it, averaged over three runs. With the tool against without, GPT-5.6 Terra scored 25.5% vs 33.3%, Claude Opus 4.8 scored 25.5% vs 26.5%, and GLM 5.2 scored 3.9% vs 5.9%. They found "no statistically significant accuracy improvement on any model", and cost rose on two of the three, so the tool became optional.</p>
+      <p>Read it like any null result. It shows no gain on that benchmark for those models. It does not show that planning never helps, but a default that costs tokens has to earn its place.</p>
+    </aside>
+    <p><strong>Parallel agents clash on shared work.</strong> Agents that edit the same code lose details and make conflicting choices. They do best on independent subtasks.</p>
+  </section>
+
+  <section id="tendencies">
+    <h2>What gains from better models, and what needs architecture</h2>
+    <p>A new model version arrives. Which parts of your agent get better on their own? These are tendencies to test, not laws.</p>
+    <p>A better model mostly improves judgment inside one call (Q29). That covers diagnosing a bug from evidence, writing correct code, choosing the next action, recovering from errors, and following long instructions.</p>
+    <p>Good architecture is needed whatever the model (Q30). That covers permissions and the security boundary, checkpoints and idempotency, the source of truth, budgets, checks against the real world, monitoring, and evaluation. For example, a smarter model does not make a retried payment safe. Only an idempotency key that the payment service checks does that.</p>
+    <h3>Two hypotheses worth testing</h3>
+    <p>First, features that make up for a model weakness fade as models improve. Deep Agents dropped its default todo tool after the benchmark above. In Anthropic's long-running harness work, Sonnet 4.5 needed context resets with handoff files, but with Opus 4.5 the author dropped them and relied on compaction. To test this on your tasks, run the old and new model, each with and without the feature. If the feature helps the new model less, retest it at every upgrade.</p>
+    <p>Second, gains from more agents are partly gains from more compute. Anthropic's multi-agent research system beat a single agent by 90.2% on its internal research eval. But multi-agent runs used about 15 times the tokens of a chat. On the BrowseComp evaluation, token usage alone explained 80% of the variance in performance. The model still mattered: a model upgrade gave a bigger gain than doubling the token budget. So compare designs at equal tokens.</p>
+    <p>Features that carry information or authority do not fade this way. A checkpoint, an approval gate, or your team's conventions file is not a workaround for a weak model.</p>
+  </section>
+
+  <section id="attribution">
+    <h2>How to attribute a gain</h2>
+    <p>Back to Patch's jump from 62% to 74%. Asking which change caused it is a cause-and-effect question, so set it up like an experiment:</p>
+    <ol>
+      <li>Freeze the task set, and keep a held-out slice that you do not look at while tuning.</li>
+      <li>Fix the budgets for model calls, tokens, cost, and time, and keep them equal across versions.</li>
+      <li>Change one lever at a time: add it to the old version, or remove it from the new one (an ablation). If the two results disagree, the levers interact.</li>
+      <li>Run paired, repeated trials on the same tasks, in the same window, from fresh environments.</li>
+      <li>Compare task by task, and read the traces of the tasks that changed.</li>
+      <li>Sort the failures into categories, before and after. The cause shows up as a shift between categories.</li>
+    </ol>
+    <p><a href="16-evaluation.html#trials">Chapter 16</a> covers the statistics behind steps 4 and 5.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Failure categories point to levers</caption>
+        <thead><tr><th scope="col">The trace shows</th><th scope="col">Suspect first</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">The needed fact never entered the context</th><td>Retrieval, more context, tools</td></tr>
+          <tr><th scope="row">The fact was there, and the model misread it</th><td>Model, prompt, compute</td></tr>
+          <tr><th scope="row">The right action did not exist, or failed with a vague error</th><td>Tools</td></tr>
+          <tr><th scope="row">A package was missing, a test was flaky, a build timed out</th><td>Environment</td></tr>
+          <tr><th scope="row">The run stopped early, looped, or died on an error</th><td>Loop, verification</td></tr>
+          <tr><th scope="row">It lost track of subtasks in a long run</th><td>Planning, compaction</td></tr>
+          <tr><th scope="row">It claimed done, and nothing caught it</th><td>Verification</td></tr>
+          <tr><th scope="row">It hit the budget while still making progress</th><td>Compute, budgets</td></tr>
+          <tr><th scope="row">It repeated a mistake from an earlier session</th><td>Memory</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>Attribution is like <code>git bisect</code>. You have a good version, a bad version, and the changes in between, and you test your way to the cause.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> bisect assumes a test that gives the same answer every time, and changes that do not interact. Here each test is a noisy measurement, and one change can help one model and hurt another. So each step needs repeated paired trials.</p>
+    </aside>
+
+    <h3>Practice: what caused the gain?</h3>
+    <p>Some of these cases have an answer. Others call for "insufficient evidence", plus the experiment that would settle it.</p>
+    <div class="quiz-group">
+      <p class="quiz-score" aria-live="polite">Pick an answer for each case.</p>
+      <div class="quiz">
+        <p class="q">Patch rose from 62% to 74% in the week that a new model version shipped and the <code>run_tests</code> tool landed. What caused the gain?</p>
+        <ol class="options">
+          <li>The new model</li>
+          <li>The new tool</li>
+          <li data-correct>Insufficient evidence. Run all four combinations (old or new model, with or without the tool) on the same tasks.</li>
+        </ol>
+        <details class="answer"><summary>Answer</summary><p>Two changes landed together, so a before-and-after number cannot separate them. The four combinations can.</p></details>
+      </div>
+      <div class="quiz">
+        <p class="q">A multi-agent research design beats a single agent by 9 points. It also uses four times the tokens. What can you conclude?</p>
+        <ol class="options">
+          <li>Multiple agents are better for research</li>
+          <li data-correct>Insufficient evidence. Give the single agent the same token budget, and compare at equal cost.</li>
+          <li>The single agent's prompt is worse</li>
+        </ol>
+        <details class="answer"><summary>Answer</summary><p>More agents means more compute. Until both designs spend the same, you cannot tell the design apart from the extra tokens.</p></details>
+      </div>
+      <div class="quiz">
+        <p class="q">Old and new model, same setup, 80 tasks, five trials each, run in the same window with the same budgets. The new model does better on 20 tasks, worse on 4, and the same on 56. The mean difference is +9 points (95% interval +5 to +13), and the traces show fewer misread test failures. What caused the gain?</p>
+        <ol class="options">
+          <li data-correct>The new model, on tasks like these</li>
+          <li>Insufficient evidence: run more trials</li>
+          <li>The setup around the model</li>
+        </ol>
+        <details class="answer"><summary>Answer</summary><p>Here the evidence is good: one change, paired trials, an interval well above zero, and a cause visible in the traces.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: which lever moved Patch?</h2>
+    <p>The team reran each change on the same 50 bugs with fixed budgets, including all four combinations of model and tool. The <code>run_tests</code> tool added 9 points (interval +2 to +16). The new model added 3 points (−4 to +10), too few for this suite to tell apart from zero, so the team records it as unmeasured. The compaction fix left success flat but cut repeated test runs.</p>
+<pre><code>experiment = {
+    "tasks": "patch-bugs-v3",          # 50 bugs, frozen
+    "trials": 3,
+    "budget": {"steps": 30, "usd": 3.00},
+    "arms": {
+        "baseline":   {"model": "old", "run_tests": False},
+        "model":      {"model": "new", "run_tests": False},
+        "tool":       {"model": "old", "run_tests": True},
+        "both":       {"model": "new", "run_tests": True},
+        "compaction": {"model": "old", "run_tests": False, "new_summary": True},
+    },
+    "order": "interleaved",            # arms alternate, same afternoon
+}</code></pre>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Crediting the last change</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The newest or most visible change gets the credit, even when several changes landed, including a silent provider update.</dd>
+        <dt>How to spot it</dt><dd>More than one change landed between the two measurements.</dd>
+        <dt>What to do</dt><dd>Keep a change log next to every eval run, and test each change on its own.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Comparing at unequal cost</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>One design spends more tokens, steps, or attempts, so it buys its gain with compute. In one Anthropic test, a full harness built a playable game where a solo agent did not, but it cost over 20 times as much.</dd>
+        <dt>How to spot it</dt><dd>Cost per task differs between the two versions.</dd>
+        <dt>What to do</dt><dd>Keep budgets equal, or compare success against cost for each design.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Which lever to try first, based on the failure categories in your traces.</li>
+          <li>The frozen task set, the budgets, and what counts as a real gain.</li>
+          <li>Which features make up for the current model, and when to retest them.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The experiment runner: versions, interleaving, resets, and trial counts.</li>
+          <li>Tagging traces with your failure categories, with spot checks by you.</li>
+          <li>Intervals, per-task differences, and cost accounting across agents.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">Which parts of an agent benefit primarily from better models? (Q29)</p>
+      <details class="answer"><summary>Answer</summary><p>Judgment inside a call: diagnosing from evidence, writing code and arguments, choosing the next action, and recovering from errors. Even these depend on good context and tools.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Which parts require good systems architecture? (Q30)</p>
+      <details class="answer"><summary>Answer</summary><p>Permissions and the security boundary, durability and idempotency, the source of truth, budgets, monitoring, and evaluation. A better model fixes none of these.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">A feature adds 10 points with the old model and 1 point with the new one. What does that suggest?</p>
+      <ol class="options">
+        <li>The feature is broken</li>
+        <li data-correct>It made up for a weakness the new model no longer has, and may now mostly cost tokens</li>
+        <li>The new model is worse</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>The feature's value depends on the model. Check what it costs with the new model, and decide whether 1 point is worth it.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Most levers also add compute or change the context on the side. So compare at equal budgets, and change one thing at a time.</li>
+      <li>Attribute a gain with paired, repeated trials on a frozen task set. Then look in the traces for the cause.</li>
+      <li>"Insufficient evidence" is a good answer when you can name the experiment that would settle it.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> (Anthropic, June 2025). Token budgets, model choice, and when parallel agents pay off.</li>
+      <li><a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> (Cognition, June 2025). The case against parallel agents that make conflicting decisions.</li>
+      <li><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">Harness design for long-running application development</a> (Anthropic, March 2026). A separate evaluator agent, its cost, and a harness that shrinks as models improve.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

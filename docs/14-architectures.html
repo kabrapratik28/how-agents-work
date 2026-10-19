@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent architectures · How AI Agents Work</title>
+<meta name="description" content="Six common ways to arrange agents, what each one costs, and the four choices underneath them: who decides the next step, how work is split, what starts a run, and what survives a crash.">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/widgets/architectures.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 14 · Systems</p>
+    <h1>Agent architectures</h1>
+    <p class="lede">An agent architecture answers four questions: who decides the next step, how the work is split, what starts a run, and what survives a crash.</p>
+    <div class="loop-map" data-focus="all"></div>
+  </header>
+
+  <section id="building-blocks">
+    <h2>What an architecture is made of</h2>
+    <p>So far, Patch is one loop that calls the model, runs tools, and repeats. Now suppose Patch must also fix CI failures at night and wait hours for a person to approve a database change. One loop in a terminal cannot do that, so you add parts around it: a trigger, saved state, or helper agents. How you arrange those parts is the architecture.</p>
+    <p>Every arrangement answers the same four questions:</p>
+    <ul>
+      <li><strong>Who decides the next step?</strong> Your code, the model, or a mix of both.</li>
+      <li><strong>How is the work split?</strong> One loop, several workers, or a tree of managers.</li>
+      <li><strong>What starts a run?</strong> A person, an event such as a webhook, or a schedule.</li>
+      <li><strong>What survives a crash?</strong> Nothing, a saved plan, or a checkpoint after every step.</li>
+    </ul>
+  </section>
+
+  <section id="single-agent">
+    <h2>Single agent</h2>
+    <p>The user asks Patch to fix a failing test. One loop does the whole job: Patch runs the test, reads the file, edits it, and runs the test again.</p>
+    <figure>
+<pre class="diagram" aria-label="A user sends a task to one agent loop, which calls tools and reads their results">
+<span class="c-human">User</span>
+  ↓
+<span class="c-model">Agent</span>   one loop, one context
+  ↓ ↑
+<span class="c-tool">Tools</span>
+</pre>
+    </figure>
+    <p>This is the easiest shape to build and debug, because one context holds every decision. But all the work shares that context, so long or messy work fills it up. Use it for open-ended tasks that fit in one context, which covers most coding tasks. Avoid it when big subtasks could run in parallel, or when the work must wait for hours.</p>
+  </section>
+
+  <section id="planner-executor">
+    <h2>Planner and executor</h2>
+    <p>The user asks Patch to change how session tokens are stored. First, one model call (the planner) writes a numbered plan: pick a hash function, update the code that creates and checks tokens, and run the tests. Then a loop (the executor) carries out the steps, and a failed step sends the plan back to the planner.</p>
+    <figure>
+<pre class="diagram" aria-label="A planner writes a plan, an executor loop carries it out with tools, and a failed step goes back to the planner">
+<span class="c-model">Planner</span>    one model call writes a numbered plan
+  ↓
+<span class="c-model">Executor</span>   a loop works through the steps
+  ↓ ↑
+<span class="c-tool">Tools</span>
+  (a failed step sends the plan back to the planner)
+</pre>
+    </figure>
+    <p>A person can approve the plan before any file changes, and your code can save it and resume at step 3. But it costs an extra call, and a plan written before exploring is partly a guess. Use it for long tasks whose steps depend on each other, or for risky changes that need approval first. Skip it when each step depends on what the last one found, as in debugging (<a href="06-planning.html">chapter 6</a>).</p>
+  </section>
+
+  <section id="manager-workers">
+    <h2>Manager and workers</h2>
+    <p>The user asks Patch to audit three services for code that still accepts an old token format. A manager agent splits the job into three parts and hands each part to a worker. Each worker is a separate loop with its own context and tools (<a href="07-subagents.html">chapter 7</a>). The workers search at the same time and send back short summaries, which the manager combines.</p>
+    <figure>
+<pre class="diagram" aria-label="A manager delegates to three workers: research, code, and review">
+           <span class="c-model">Manager</span>
+        /     |     \
+<span class="c-model">Research</span>   <span class="c-model">Code</span>   <span class="c-model">Review</span>
+</pre>
+    </figure>
+    <p>This works well when the parts are independent, because the workers run in parallel and each context stays small. But the shape uses more model calls, and the summaries lose detail. The bigger risk is that workers cannot see each other's choices, so avoid this shape when the parts share decisions or files.</p>
+    <p>Published results show both sides. Anthropic's research system, a Claude Opus 4 lead with Claude Sonnet 4 helpers, beat a single Claude Opus 4 agent by 90.2% on Anthropic's internal research eval. But multi-agent systems like it use about 15 times the tokens of a chat. Anthropic also notes that most coding tasks have fewer truly parallel parts than research. Cognition argues for one agent by default: "Actions carry implicit decisions, and conflicting decisions carry bad results."</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>A multi-agent system = several loops + a tool that hands a loop its task + a way to collect the results.</p>
+    </aside>
+  </section>
+
+  <section id="hierarchical">
+    <h2>Hierarchical agents</h2>
+    <p>Some jobs are too big for one manager. Say a team wants a long report on the health of its 40 services. A director splits the report into chapters for leads, and each lead splits its chapter into sections for workers. Results flow back up, and each level summarizes what it received.</p>
+    <figure>
+<pre class="diagram" aria-label="A director delegates to two leads, and each lead delegates to two workers">
+            <span class="c-model">Director</span>
+           /        \
+     <span class="c-model">Lead A</span>          <span class="c-model">Lead B</span>       managers
+     /    \          /    \
+  <span class="c-model">W1</span>      <span class="c-model">W2</span>     <span class="c-model">W3</span>      <span class="c-model">W4</span>     workers
+</pre>
+    </figure>
+    <p>A hierarchy can handle more work than one manager can track, because each level holds only its own part. But every level adds model calls and another summary that can drop a detail. A mistake at the top also spreads to everything below it. Use it only for very large jobs that split into areas. Many copies of one job, such as one change in 300 repositories, need a flat queue (<a href="20-exercises.html#ex-final">chapter 20</a>).</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Deep Agents</strong> 0.7 starts helpers through a <code>task</code> tool. Its default helpers do not get that tool, so they cannot start helpers of their own.</li>
+        <li><strong>Hermes</strong> v0.22 uses a depth limit (<code>max_spawn_depth: 1</code>) that you must raise to allow deeper delegation.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section id="graph-workflow">
+    <h2>Graph workflow</h2>
+    <p>Suppose Patch handles every bug report the same way: research the code, plan a fix, make the change, and review it. A failed review sends the work back to research. When you know the steps, you can draw them as a graph, with boxes (nodes) for steps and arrows (edges) between them. Some nodes call the model, and others run plain code, such as the tests.</p>
+    <figure>
+<pre class="diagram" aria-label="A graph: research, then plan, then execute, then review, with an arrow from review back to research">
+<span class="c-model">Research</span> → <span class="c-model">Plan</span> → <span class="c-runtime">Execute</span>
+    ↑                 ↓
+    └────── <span class="c-model">Review</span> ───┘
+</pre>
+    </figure>
+    <p>Graphs are predictable and easy to audit. Your code decides the known steps, so no model call is spent on them. It can also save progress, retry, or stop for a person at fixed points. But a fixed arrow cannot say "read one more file and try again", so graphs handle open-ended work badly. When one step is open-ended, make that node run an agent loop.</p>
+  </section>
+
+  <section id="event-driven">
+    <h2>Event-driven agent</h2>
+    <p>At 02:10, CI fails on the main branch and sends a webhook, an HTTP request that one service sends another when something happens. Nobody is awake to start Patch, so the webhook starts the run. A handler loads the saved state for that branch, runs the loop, and saves the state again. Between events, nothing runs.</p>
+    <figure>
+<pre class="diagram" aria-label="Webhooks, chat messages, and schedules feed a queue. A handler loads state, runs a loop, and saves state.">
+<span class="c-tool">webhook</span>     <span class="c-human">chat message</span>     <span class="c-runtime">schedule</span>
+     \            |             /
+      v           v            v
+          <span class="c-state">queue of events</span>
+                 |
+                 v
+<span class="c-runtime">handler:</span> load <span class="c-state">state</span> → run the loop → save <span class="c-state">state</span>
+</pre>
+    </figure>
+    <p>This shape lets work start without a person, and a long wait costs nothing. The cost is that you now run a distributed system (<a href="12-long-running.html">chapter 12</a>). Events can arrive twice, late, or out of order, so your code must save and load state correctly every time. Use it for agents that react to the world over days, such as CI fixers. When a person is waiting at the keyboard, an interactive loop is simpler.</p>
+  </section>
+
+  <section id="dimensions">
+    <h2>The four choices underneath</h2>
+    <p>The six shapes are not six options on one scale, because each one answers a different question. Event-driven is about what starts a run, and graph is about who decides the next step. Manager and workers, and hierarchy, are about how the work is split, and planner and executor keeps the plan as a separate object.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>The six shapes, described by the four choices (as they are usually built)</caption>
+        <thead><tr><th scope="col">Shape</th><th scope="col">Who decides the next step</th><th scope="col">How the work is split</th><th scope="col">What starts a run</th><th scope="col">What survives a crash</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Single agent</th><td>The model</td><td>One loop</td><td>Usually a person</td><td>Usually nothing</td></tr>
+          <tr><th scope="row">Planner and executor</th><td>A plan that the model revises</td><td>One loop, two roles</td><td>Usually a person</td><td>The plan can be saved</td></tr>
+          <tr><th scope="row">Manager and workers</th><td>The manager model</td><td>One level of workers</td><td>Usually a person</td><td>Usually nothing</td></tr>
+          <tr><th scope="row">Hierarchy</th><td>Models at each level</td><td>A tree</td><td>A large goal</td><td>Needs saved progress at each level</td></tr>
+          <tr><th scope="row">Graph workflow</th><td>Your code</td><td>No split needed</td><td>Anything</td><td>A checkpoint after each node</td></tr>
+          <tr><th scope="row">Event-driven</th><td>Any of the above, inside a run</td><td>Any</td><td>Events</td><td>State saved after each event</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="combined">One combined architecture</h3>
+    <p>Patch's unattended mode picks an answer to each question:</p>
+    <figure>
+<pre class="diagram" aria-label="Combined architecture. CI failures, labeled issues, chat messages, and a nightly schedule feed a queue that drops duplicates. A graph runs triage, a fix node, a test gate, and open PR, with a checkpoint after each node. The fix node is an agent loop with a read-only explorer and a reviewer.">
+<span class="c-tool">CI failure</span> / <span class="c-human">labeled issue</span> / <span class="c-human">chat message</span> / <span class="c-runtime">nightly schedule</span>
+                 |                           what starts it: events
+                 v
+       <span class="c-state">queue</span>   (a duplicate event is dropped)
+                 |
+                 v
+<span class="c-model">triage</span> → <span class="c-model">fix node</span> → <span class="c-runtime">test gate</span> → <span class="c-runtime">open PR</span>      who decides: code outside
+             |         (code)       (code, one per issue)
+             v
+    <span class="c-model">Patch: agent loop</span>                        who decides: model inside
+       /            \
+<span class="c-model">explorer</span>          <span class="c-model">reviewer</span>                   split: read-only helpers
+(read-only)       (no write tools)
+
+<span class="c-state">checkpoint after every node</span>                  survives a crash
+</pre>
+    </figure>
+    <ul>
+      <li>An event trigger, because nobody is at the keyboard.</li>
+      <li>A graph outside, because triage, fix, test, and pull request always come in that order.</li>
+      <li>An agent loop in the fix node, because the fix itself is open-ended.</li>
+      <li>Read-only helpers, because only one agent should write files.</li>
+      <li>A checkpoint after every node, so a crash or a long wait loses no work.</li>
+    </ul>
+    <p>It has no planner, because each fix is small.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>Choosing between one agent and many is like choosing between a monolith and microservices. Splitting gives you isolation and parallel work, but you pay with partial failures and harder debugging.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> services talk through exact, typed contracts. Agents pass each other summaries in plain language, which lose detail, and each agent can misread its instructions.</p>
+    </aside>
+  </section>
+
+  <section id="workflow-patterns">
+    <h2>Workflow patterns on the same map</h2>
+    <p>Anthropic's guide "Building effective agents" (December 2024) names five workflow patterns. Each one fits the same four choices:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Five workflow patterns, described by the four choices</caption>
+        <thead><tr><th scope="col">Pattern</th><th scope="col">What it is</th><th scope="col">Who decides the next step</th><th scope="col">How the work is split</th><th scope="col">Closest shape</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Prompt chaining</th><td>A fixed sequence of model calls, each working on the last one's output, with checks in code between them</td><td>Your code</td><td>No split</td><td>A graph that is a straight line</td></tr>
+          <tr><th scope="row">Routing</th><td>A model or a classifier picks one of several paths</td><td>Your code, with a model choosing the branch</td><td>No split</td><td>A graph with a branch, like the triage node</td></tr>
+          <tr><th scope="row">Parallelization</th><td>Several calls at once, either on separate sections or voting on the same question</td><td>Your code</td><td>Parts chosen by your code</td><td>A graph that fans out</td></tr>
+          <tr><th scope="row">Orchestrator-workers</th><td>A model splits the task while it runs and hands out the parts</td><td>The model</td><td>Parts chosen by a model</td><td>Manager and workers</td></tr>
+          <tr><th scope="row">Evaluator-optimizer</th><td>One call produces a result, another critiques it, and they repeat until it is good enough</td><td>Your code runs the loop, and a model judges</td><td>Two roles</td><td>A graph with a loop back</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>In the first three patterns, your code knows the steps before the run starts. In the last two, a model decides part of the flow while the task runs.</p>
+  </section>
+
+  <section id="error-compounding">
+    <h2>Why more agents can mean less reliability</h2>
+    <p>Suppose a manager hands a job to three workers, and each worker gets its part right 90% of the time. If all three parts are required, the job works only when all three succeed:</p>
+<pre><code>one agent, one part              0.90
+manager with 3 required workers  0.90 ** 3 = 0.73
+director, 3 leads, 9 workers     0.90 ** 9 = 0.39   (counting workers only)</code></pre>
+    <p>This math assumes that workers fail independently, that every part is required, and that nobody checks or retries. Anthropic's guide warns about the same effect: it lists "the potential for compounding errors" among the costs of agents.</p>
+    <p>Checks and retries make real systems do much better than the math. But failures with a shared cause, such as one bad instruction sent to every worker, fail again on every retry (<a href="15-reliability.html#compounding">chapter 15</a>).</p>
+  </section>
+
+  <section id="architecture-explorer">
+    <h2>Explore: the same task in different shapes</h2>
+    <p>Pick a shape and a situation. The explorer says whether the shape helps or hurts there, and lists each step with the model calls counted. Try these comparisons:</p>
+    <ul>
+      <li>Edits that depend on each other: manager and workers, then single agent. Where does the conflict start?</li>
+      <li>A long wait for approval: single agent, then event-driven.</li>
+      <li>Separate research tasks: manager and workers, then graph workflow.</li>
+    </ul>
+    <div class="widget" data-widget="architectures" data-arch="manager" data-condition="coupled">
+      <p class="noscript">Interactive widget. Without JavaScript, here is what it shows. Workers speed up separate research tasks but double the model calls. Workers that split dependent edits collide, while one agent stays consistent. Shapes that wait for a person delay work that an outside event starts. A design that saves its progress can wait hours for an approval with no process running.</p>
+    </div>
+    <p>No shape helps in every situation. A hierarchy never helps in these four, because none of the tasks is too big for one manager.</p>
+  </section>
+
+  <section id="choosing">
+    <h2>Choosing an architecture</h2>
+    <p>Anthropic's guide recommends "finding the simplest solution possible, and only increasing complexity when needed." So start with one loop or a fixed workflow, and add a part only when the task gives you a reason:</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Reasons to add a part, and parts to avoid</caption>
+        <thead><tr><th scope="col">If the task has</th><th scope="col">Add</th><th scope="col">Avoid</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Open-ended steps that fit in one context</th><td>A single agent loop</td><td>Planners and workers that guess ahead</td></tr>
+          <tr><th scope="row">The same known steps every time</th><td>A graph, with code for the steps that need no model</td><td>An open loop that rediscovers the steps on every run</td></tr>
+          <tr><th scope="row">Independent parts, or messy exploration</th><td>Workers, or a fan-out in code, that send back summaries</td><td>One context that holds every raw result</td></tr>
+          <tr><th scope="row">Parts that share decisions or files</th><td>One agent that writes, with helpers that only read</td><td>Several agents writing at once</td></tr>
+          <tr><th scope="row">Work that starts without a person</th><td>An event trigger and saved state</td><td>An interactive loop</td></tr>
+          <tr><th scope="row">Long waits for approvals or people</th><td>Checkpoints, so the process can end and an event can resume it</td><td>A loop that waits in memory</td></tr>
+          <tr><th scope="row">A job too big for one manager</th><td>A hierarchy, with checks at each level</td><td>One manager buried in summaries</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>When the reason is real, extra parts can be worth their cost. In an Anthropic experiment, a single agent spent 20 minutes and $9 on a retro game maker that did not work. A harness with separate planner, generator, and evaluator agents spent 6 hours and $200, and its game worked. That task was long, and a separate evaluator could check the work.</p>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch's architecture</h2>
+    <p>Patch stays a single agent with two read-only helpers from chapter 7, an explorer and a reviewer. Only the main loop writes files, so related edits stay consistent. In unattended mode, that loop becomes the fix node of the graph above. Patch gets no hierarchy, because one agent can handle one bug.</p>
+<pre><code># before: a person starts one loop
+- answer = run_agent(task, tools=TOOLS)
+# chapter 14: one writer with read-only helpers, inside an event-driven graph
++ fix = agent(tools=TOOLS + [delegate],
++             helpers={"explorer": READ_ONLY, "reviewer": READ_ONLY})
++ graph = Graph([triage, fix, test_gate, open_pr], checkpoint="every_node")
++ on_event(["ci_failed", "issue_labeled"], start=graph)</code></pre>
+  </section>
+
+  <section id="design-checkpoint">
+    <h2>Design checkpoint 4: the expense agent</h2>
+    <article class="exercise" id="cp-4">
+      <p>A 300-person company wants an expense agent. Employees forward receipts by email or upload a photo. The agent reads the receipt, checks it against the travel and expense policy, files the expense in the finance system, and routes it for manager approval. Employees can also ask it questions such as "why was my expense rejected?"</p>
+      <ol>
+        <li>Manager approval can take days. How does the work wait without a process sitting idle?</li>
+        <li>The finance API times out after you sent "submit". What happens on retry?</li>
+        <li>What triggers the agent: a schedule, events, or a user?</li>
+        <li>Sketch the architecture. Single agent, graph workflow, or something else? Why?</li>
+        <li>How do the parts communicate?</li>
+      </ol>
+      <label for="cp-4-notes">Your design</label>
+      <textarea id="cp-4-notes" class="ex-notes" rows="8"></textarea>
+      <details class="reveal"><summary>Reveal one reasonable design</summary>
+        <ol>
+          <li>Save the expense's state as "awaiting manager" and end the process. Resume on the finance system's webhook or a scheduled check.</li>
+          <li>Save an idempotency key, such as the receipt hash plus the employee, before the first attempt, and reuse it on every retry. If the finance API cannot check keys, look the expense up first and resubmit only if it is missing.</li>
+          <li>All three: events (a new receipt, an approval webhook), users (questions), and a schedule (reminders).</li>
+          <li>An event-driven graph: ingest, extract (model), validate (code), send exceptions to a person, submit (code, with the key), wait for approval, and notify. Questions go to a small agent with read-only tools.</li>
+          <li>A database row per expense is the source of truth. A queue carries receipts and webhooks, and each model call sees only the current item.</li>
+        </ol>
+        <p>Most of this design is a workflow. The model reads receipts, judges policy edge cases, and answers questions, and your code does the rest.</p>
+      </details>
+    </article>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Using many agents when one would do</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>Delegation looks advanced and is easy to add, so teams add it before the task gives them a reason.</dd>
+        <dt>How to spot it</dt><dd>Managers mostly pass summaries along, and the call count is several times that of one agent.</dd>
+        <dt>What to do</dt><dd>Run the same tasks with one agent and with helpers. Keep the helpers only if they win on success or cost.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Splitting work that shares decisions</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>A split by file or by function looks clean, but the parts often share a decision, such as a data format.</dd>
+        <dt>How to spot it</dt><dd>Edits fail to apply, tests fail only after merging, or the workers' reports contradict each other.</dd>
+        <dt>What to do</dt><dd>Give related changes one agent that writes, and let helpers only read and report.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Details lost in hand-offs</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>Each summary keeps what its writer thought mattered, so a constraint or an exact value can fall out.</dd>
+        <dt>How to spot it</dt><dd>Compare a worker's full output with what its manager received.</dd>
+        <dt>What to do</dt><dd>Ask for results with required fields, such as files touched and decisions made. Write details to files and pass the paths.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>Which situations the system really faces: open-ended steps, independent parts, shared decisions, starts without a person, long waits.</li>
+          <li>For each part, whether your code or a model decides the next step, and which agent may write.</li>
+          <li>What starts a run, and what must survive a crash or a wait.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The graph code: nodes, arrows, and branch conditions.</li>
+          <li>Event handlers, queue consumers, and duplicate detection.</li>
+          <li>Saving checkpoints, resuming runs, and collecting results from workers.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">Why use multiple agents? Name the situations that justify them. (Q13)</p>
+      <details class="answer"><summary>Answer</summary><p>Independent parts that can run in parallel, exploration messy enough to flood one context, and parts that need different tools, such as a read-only reviewer. Each costs extra model calls.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Two workers edit different functions in the same file at the same time. What is the most likely problem? (Q14)</p>
+      <ol class="options">
+        <li>Each worker runs out of context</li>
+        <li data-correct>Their edits collide, or they make different choices for a decision both must share</li>
+        <li>The manager forgets the original task</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>Each worker sees only its own part, so they can change the same lines or pick different formats.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">An agent must start when a CI webhook arrives, fix the failing test, and then wait up to a day for review. How would you answer the four questions? (Q31)</p>
+      <details class="answer"><summary>Answer</summary><p>Events start the run. A checkpoint before the review lets the process end until the review event resumes it. A graph runs the outer steps, and one agent loop does the fix.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Start with one loop or a fixed workflow, and add a part only for a reason you can name.</li>
+      <li>Split work across agents only when the parts are independent. Work that shares decisions needs one agent that writes.</li>
+      <li>Every hand-off adds model calls and another place to fail, so check results where they are handed over.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> (Anthropic, December 2024). The five workflow patterns.</li>
+      <li><a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> (Anthropic, June 2025). When parallel helpers pay off, and their cost.</li>
+      <li><a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> (Cognition, June 2025). Why parallel agents make conflicting decisions.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+<script defer src="assets/widgets/architectures.js"></script>
+</body>
+</html>

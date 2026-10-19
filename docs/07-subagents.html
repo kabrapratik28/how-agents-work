@@ -15,7 +15,7 @@
   <header class="chapter-head">
     <p class="kicker">Chapter 7 · Capabilities built on the loop</p>
     <h1>Subagents</h1>
-    <p class="lede">Handing part of a task to a second agent loop keeps the main context clean and can save time. But every handoff loses some information and costs extra tokens.</p>
+    <p class="lede">Handing part of a task to a second agent loop keeps the main context clean and can save time. But some information gets lost on the way, and the extra loop costs tokens.</p>
     <div class="loop-map" data-focus="act"></div>
   </header>
 
@@ -74,7 +74,7 @@
         </tbody>
       </table>
     </div>
-    <p>A single extra model call, such as a summary or the reflection call in <a href="06-planning.html#reflection">chapter 6</a>, is not a subagent, because it runs once and returns. A subagent loops, choosing its own steps until it stops.</p>
+    <p>A single extra model call is not a subagent, because it runs once and returns. Examples are a summary, or the reflection call in <a href="06-planning.html#reflection">chapter 6</a>. A subagent loops, choosing its own steps until it stops.</p>
   </section>
 
   <section id="delegation">
@@ -132,7 +132,7 @@ Agent as a tool                      Handoff
         </tbody>
       </table>
     </div>
-    <p>A fresh context over shared files is a common default, but it does not stop the child from editing the parent's files. If children must not affect each other, give each its own copy of the work, such as a git worktree or a container.</p>
+    <p>If children must not touch each other's files, give each its own copy of the work, such as a git worktree or a container.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
@@ -144,7 +144,7 @@ Agent as a tool                      Handoff
   <section id="specialization">
     <h2>Specialization</h2>
     <p>Say a reviewer subagent has a prompt that says "you are a careful security reviewer". It also has no tool that can write, and only that second part is a guarantee. The prompt shapes what the reviewer tends to do, but the missing tools decide what it can do.</p>
-    <p>The cost is that a specialist knows less. For example, a reviewer that sees only the diff cannot tell whether the change matches the plan. Put what it needs in the brief. One loop can also specialize by switching its prompt and tools between phases. So use a subagent only when you also want a separate context or budget.</p>
+    <p>The cost is that a specialist knows less. For example, a reviewer that sees only the diff cannot tell whether the change matches the plan. Put what it needs in the brief. One loop can also specialize by switching its prompt and tools between phases. So you need a subagent only when you also want a separate context or budget.</p>
   </section>
 
   <section id="concurrency">
@@ -163,7 +163,7 @@ Agent as a tool                      Handoff
   <section id="aggregation">
     <h2>Combining the results</h2>
     <p>In the simulator below, a child researching Redis reads a config file. It shows that the team's Redis server deletes old data when memory runs low. The child's short summary leaves that out. So the parent recommends Redis for a job queue, where losing jobs is a real problem.</p>
-    <p>Each result is a claim written by another model, not proof. Summaries drop details, and by the time the parent reads one, the child is usually gone. Results can conflict, and then the parent needs evidence, such as the original document or a test. A confident tone is not evidence, and neither is a vote. Reports also go stale: a child says "the test passes", then another child changes a file the test depends on.</p>
+    <p>This step, combining what the children send back, is called aggregation. Each result is a claim written by another model, not proof. Summaries drop details, and by the time the parent reads one, the child is usually gone. Results can conflict, and then the parent needs evidence, such as the original document or a test. A confident tone is not evidence, and neither is a vote. Reports also go stale: a child says "the test passes", then another child changes a file the test depends on.</p>
     <p>So design what comes back:</p>
     <ul>
       <li>Ask for references, such as file:line or a URL, so the parent can re-check claims cheaply.</li>
@@ -182,11 +182,11 @@ Agent as a tool                      Handoff
 
   <section id="subagent-sim">
     <h2>Try it: the subagent simulator</h2>
-    <p>Patch's team needs a job queue for background work, such as password-reset emails. The parent asks three children to research one option each: Redis Streams, RabbitMQ, and Amazon SQS. Try each scenario, then change what comes back and whether the children run at the same time.</p>
+    <p>Patch's team needs a job queue for background work. The parent asks three children to research one option each: Redis Streams, RabbitMQ, and Amazon SQS. Try each scenario, then change what comes back and whether the children run at the same time.</p>
     <div class="widget" data-widget="subagents" data-start="clean">
       <p class="noscript">Interactive widget. Without JavaScript, here is the clean run in words. The parent sends one queue to each of three children. Each child re-reads files the parent already knew, reads the docs, and sends back a short report. Running at the same time, the children finish in 3 minutes, against 7.5 minutes one after another. Together all agents use about 141,000 tokens, while one careful agent would use about 124,000.</p>
     </div>
-    <p>In the clean run, the children finish much sooner than one agent would. But together they use more tokens than one careful agent. And when two children edit one file, each does what its brief says. The conflict comes from how the work was split.</p>
+    <p>When two children edit one file, each does what its brief says. The conflict comes from how the work was split.</p>
   </section>
 
   <section id="recursion">
@@ -207,12 +207,12 @@ Agent as a tool                      Handoff
     <h2>When multiple agents help</h2>
     <p>Four problems justify a subagent most often:</p>
     <ul>
-      <li><strong>Independent parts.</strong> For example, three sources to research. Running them at the same time saves wall-clock time.</li>
+      <li><strong>Independent parts.</strong> For example, three sources to research. Running them at the same time gets the answer sooner.</li>
       <li>Noisy searching. Finding the answer means reading far more than the answer, and isolation keeps that reading out of the main context.</li>
       <li>Different permissions. Part of the work should run with fewer rights, such as a read-only explorer.</li>
       <li>A fresh review. A reviewer that never saw the author's reasoning judges the change itself.</li>
     </ul>
-    <p>Published numbers show both the gain and the cost. Anthropic reports one result from its research system. A Claude Opus 4 lead with Claude Sonnet 4 subagents outperformed a single Claude Opus 4 agent by 90.2% on its internal research eval. The same post says multi-agent systems use about 15 times more tokens than chats, and that most coding tasks have fewer truly parallel parts than research.</p>
+    <p>Published numbers show both the gain and the cost. Anthropic reports one result from its research system. A Claude Opus 4 lead with Claude Sonnet 4 subagents outperformed a single Claude Opus 4 agent by 90.2% on its internal research eval. The same post says multi-agent systems use "about 15× more tokens than chats", and that "most coding tasks involve fewer truly parallelizable tasks than research".</p>
     <p>A complex task is not, by itself, a reason. It often needs one agent with a better context, not several agents that each see only part of it.</p>
   </section>
 
@@ -223,7 +223,6 @@ Agent as a tool                      Handoff
       <li><strong>The parts are linked.</strong> Edits to the same files, or decisions that depend on each other, drift apart when made in separate contexts.</li>
       <li>The task is small, so the briefs, the extra instructions, and the merging cost more than the work.</li>
       <li>The parent needs the details that a summary would drop.</li>
-      <li>The steps depend on each other, so separate loops cannot run at the same time anyway.</li>
     </ul>
     <p>Pi takes the skeptical side on purpose and ships no subagents. Its creator, Mario Zechner, calls a built-in subagent "a black box within a black box". He calls parallel subagents building separate features "an anti-pattern in my book". His one approved use is code review, where a command starts pi again through bash.</p>
     <p>So start with one agent. When you add a subagent, measure whether it helped (<a href="16-evaluation.html">chapter 16</a>), and check that the gain came from the extra agents (<a href="18-model-vs-architecture.html#multiple-agents">chapter 18</a>).</p>
@@ -245,25 +244,25 @@ Agent as a tool                      Handoff
     <div class="failure">
       <h3>The summary dropped what mattered</h3>
       <dl>
-        <dt>Why</dt><dd>The child chooses what to report under a size limit, and a free-form summary keeps the headline but drops the warning.</dd>
-        <dt>Detect</dt><dd>The parent acts on a claim that has no reference, and later the child's notes show the missing fact.</dd>
-        <dt>Mitigate</dt><dd>Ask for risks as their own field, with references, and keep full notes in a file the parent can read.</dd>
+        <dt>Why it happens</dt><dd>The child chooses what to report under a size limit, and a free-form summary keeps the headline but drops the warning.</dd>
+        <dt>How to spot it</dt><dd>The parent acts on a claim that has no reference, and later the child's notes show the missing fact.</dd>
+        <dt>What to do</dt><dd>Ask for risks as their own field, with references, and keep full notes in a file the parent can read.</dd>
       </dl>
     </div>
     <div class="failure">
       <h3>Two children edit the same file</h3>
       <dl>
-        <dt>Why</dt><dd>Each child follows its own brief and does not know the other exists, so the last write wins.</dd>
-        <dt>Detect</dt><dd>Two children's change lists touch the same file, or the tests pass for each child and fail after merging.</dd>
-        <dt>Mitigate</dt><dd>Let your code enforce which files each child may write. Or do linked edits in one agent, or give each child its own worktree.</dd>
+        <dt>Why it happens</dt><dd>Each child follows its own brief and does not know the other exists, so the last write wins.</dd>
+        <dt>How to spot it</dt><dd>Two children's change lists touch the same file, or the tests pass for each child and fail after merging.</dd>
+        <dt>What to do</dt><dd>Let your code enforce which files each child may write. Or do linked edits in one agent, or give each child its own worktree.</dd>
       </dl>
     </div>
     <div class="failure">
       <h3>Children disagree</h3>
       <dl>
-        <dt>Why</dt><dd>They read different sources or misread the same one, and a wrong claim can sound as sure as a right one.</dd>
-        <dt>Detect</dt><dd>Compare the same field across reports, and flag contradictions before merging.</dd>
-        <dt>Mitigate</dt><dd>Settle it with evidence, such as the original source or a test. <a href="15-reliability.html#subagent-disagreement">Chapter 15</a> goes deeper.</dd>
+        <dt>Why it happens</dt><dd>They read different sources or misread the same one, and a wrong claim can sound as sure as a right one.</dd>
+        <dt>How to spot it</dt><dd>Compare the same field across reports, and flag contradictions before merging.</dd>
+        <dt>What to do</dt><dd>Settle it with evidence, such as the original source or a test. <a href="15-reliability.html#subagent-disagreement">Chapter 15</a> goes deeper.</dd>
       </dl>
     </div>
   </section>

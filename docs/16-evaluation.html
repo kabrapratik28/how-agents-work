@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation · How AI Agents Work</title>
+<meta name="description" content="How to measure an agent: whole runs, several tries per task, checks on the result and the rules, and fair comparisons between versions.">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem('haw:v1:theme');if(t)document.documentElement.dataset.theme=JSON.parse(t)}catch(e){}</script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="index.html">How AI Agents Work</a><a class="map-link" href="index.html#map">Course map</a></header>
+<main class="chapter" id="main">
+  <header class="chapter-head">
+    <p class="kicker">Chapter 16 · Quality</p>
+    <h1>Evaluation</h1>
+    <p class="lede">To evaluate an agent, run whole tasks several times each, check the results against evidence, and compare versions on the same tasks.</p>
+    <div class="loop-map" data-focus="all"></div>
+  </header>
+
+  <section id="why-harder">
+    <h2>Why an agent is harder to evaluate than one answer</h2>
+    <p>Suppose you ask a model to summarize a bug report. You can grade the summary against a good reference. Now ask Patch to fix the bug. The run takes 20 steps, edits two files, and runs the tests four times. What exactly do you grade?</p>
+    <p>A run is harder to grade than one answer for four reasons:</p>
+    <ul>
+      <li><strong>It has many steps.</strong> A wrong guess in step 3 can sink the whole run.</li>
+      <li><strong>Runs vary.</strong> Even with randomness turned down (temperature 0), the same call can return a different reply, and that changes everything after it.</li>
+      <li><strong>The result is a change in the world,</strong> such as edited files, so you need an environment you can reset.</li>
+      <li><strong>The path matters.</strong> A run that fixed the bug but pushed to main without approval failed.</li>
+    </ul>
+    <p>You are also testing more than the model, because your code, its tools, and its budgets all move the score. <a href="18-model-vs-architecture.html">Chapter 18</a> shows how to tell those causes apart.</p>
+    <aside class="callout analogy">
+      <p class="callout-title">Systems analogy</p>
+      <p>Grading one answer is like a unit test of a pure function. Evaluating an agent is like an integration test: you set up an environment, run a scenario, and check the end state and the logs.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> an integration test is meant to give the same result every time. An agent run does not, so one green run proves little.</p>
+    </aside>
+  </section>
+
+  <section id="outcome-vs-trajectory">
+    <h2>Grade the result and the rules</h2>
+    <p>Patch's run ends with the target test passing. But the trace shows that Patch ran <code>git push</code> without approval, or edited the test until it passed. The result looks fine, and the run still failed.</p>
+    <p>So check two things. First, check the outcome, which is the end state of the world: does the test pass, and is the expense filed correctly? Use code for this wherever you can. Second, check the invariants, which are rules that must hold in every run, such as "never calls <code>open_pr</code> without an approval record".</p>
+    <p>Do not grade by matching an expected path. A check like "reads <code>auth/session.py</code> in step 2" fails a good run that found the file another way. Anthropic's guide to agent evals agrees: "it's often better to grade what the agent produced, not the path it took."</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>An agent eval = tasks + an environment you can reset + checks on the outcome and the rules + several tries per task.</p>
+    </aside>
+  </section>
+
+  <section id="metrics">
+    <h2>Nine metrics, and how each one misleads</h2>
+    <p>Patch v2 makes 30% fewer tool calls than v1. Is it better? Not if it saved those calls by skipping the tests. Each metric below is useful, but each one misleads in a predictable way when you read it alone.</p>
+
+    <h3 id="completion">Task completion rate</h3>
+    <p>It is the share of tasks that end in verified success, not runs that merely stopped or where the model said "done". Report the step budget with it, because a bigger budget raises the rate.</p>
+
+    <h3 id="efficiency">Tool-use efficiency</h3>
+    <p>It measures tool calls per task, including repeats and failures. Fewer calls can mean skipped tests, so compare only successful runs on tasks that both versions solved. Otherwise a version that also solves a few hard, costly tasks looks wasteful.</p>
+
+    <h3 id="correctness">Correctness</h3>
+    <p>It asks whether the result is actually right. A run can pass the tests it saw and still be wrong, for example by deleting a failing assertion, so grade with hidden tests or a person's review.</p>
+
+    <h3 id="intervention">Human intervention rate</h3>
+    <p>It counts how often a person steps in, with planned approvals counted apart from corrections. Fewer interventions can mean skipped approvals, so also count rule violations, with a target of zero.</p>
+
+    <h3 id="latency">Latency</h3>
+    <p>It is the time from the start of a task to a checked result. Report the median and the 90th percentile, because an average hides the runs that loop for an hour.</p>
+
+    <h3 id="cost">Cost</h3>
+    <p>It is the money spent per task, across every agent, tool, and person. Report the cost per solved task. A budget also hides the worst runs: a run that would have cost $20 shows up as a $3 failure.</p>
+
+    <h3 id="model-calls">Number of model calls</h3>
+    <p>It counts every model call, including subagents, summaries, and graders. Count tokens too, because one call with a huge context can cost more than five small ones.</p>
+
+    <h3 id="recovery">Recovery from failure</h3>
+    <p>It asks whether the agent gets back on track after a tool error, a timeout, or a crash. Cause these failures on purpose, then count how many runs still succeed and whether any action happened twice.</p>
+
+    <h3 id="robustness">Robustness</h3>
+    <p>It asks whether success holds when the input changes in ways that should not matter, such as a reworded request or irrelevant files. For a planted instruction in a document, also check that the agent did not obey it.</p>
+
+    <p>So read the metrics in pairs, the way an A/B test watches guardrail metrics next to its main metric.</p>
+    <div class="table-wrap">
+      <table class="compare">
+        <caption>Metric pairs that keep each other honest</caption>
+        <thead><tr><th scope="col">If this improves</th><th scope="col">Check this too</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Fewer tool calls or model calls</th><td>Correctness, and whether the tests still ran</td></tr>
+          <tr><th scope="row">Fewer interventions</th><td>Rule violations</td></tr>
+          <tr><th scope="row">Lower cost per run</th><td>Cost per solved task</td></tr>
+          <tr><th scope="row">Higher completion</th><td>Correctness on hidden checks</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="graders">
+    <h2>Graders: who decides a run succeeded?</h2>
+    <p>Patch's runs are easy to grade, because a script can rerun the tests. A research report is harder, because no test can say whether it covered the important points. The part of an eval that decides pass or fail is called a grader, and there are three kinds:</p>
+    <ul>
+      <li><strong>Code checks</strong> run tests or inspect the end state. They are cheap and consistent, so use them wherever you can.</li>
+      <li><strong>Model graders</strong> score the output against a rubric, which is a list of specific checks. They handle open-ended work, but they are noisy.</li>
+      <li><strong>People</strong> are the reference for judgment calls, but they are slow, and two people can disagree.</li>
+    </ul>
+    <p>Treat a grader like a measuring instrument. Before you trust a model grader, compare it with human labels. Give it evidence, such as the diff and the test output, not only the agent's final message. If the agent uses a grader as its own stop check, grade the eval with a different one, because a grader cannot catch its own blind spots.</p>
+    <aside class="callout reduce">
+      <p class="callout-title">What does this reduce to?</p>
+      <p>A grader = a function from a run's end state and trace to pass or fail. A model grader is that function written as a model call, so it needs testing too.</p>
+    </aside>
+  </section>
+
+  <section id="trials">
+    <h2>Trials, pass@k, and pass^k</h2>
+    <p>Patch fixes bug 412 in two of three attempts. Did it pass? That depends on how Patch will be used. Each attempt is called a trial, and one trial per task tells you little, because the next one may differ.</p>
+    <p>Write down a reset policy first: every trial starts from the same commit, with empty memory and no leftover files. Otherwise trial 2 can learn from trial 1. Hermes, for example, can save memory and skills after a turn.</p>
+
+    <h3>Two ways to summarize k trials</h3>
+    <ul>
+      <li><strong>pass@k</strong> is the chance that at least one of k trials succeeds. Use it when a person or a check can pick the best attempt.</li>
+      <li><strong>pass^k</strong> is the chance that all k trials succeed. Use it when every failure costs you, as in customer support.</li>
+    </ul>
+    <p>The two can be far apart. In the τ-bench paper, gpt-4o succeeded on 61% of retail trials, but its pass^8 was below 25%. You can estimate both from n trials of a task with c successes:</p>
+<pre><code>from math import comb
+
+# n trials of one task, c passed, k &lt;= n.
+# Average the result over tasks.
+
+def pass_at_k(n, c, k):   # at least one succeeds
+    return 1 - comb(n - c, k) / comb(n, k)
+
+def pass_hat_k(n, c, k):  # all k succeed
+    return comb(c, k) / comb(n, k)</code></pre>
+
+    <h3>Compare versions on the same tasks</h3>
+    <p>Patch v1 and v2 each run the same 50 bugs, three trials per bug. The numbers here are made up but realistic. v1 passes 62% of its trials, and v2 passes 70%. Is v2 better?</p>
+    <p>Compare them bug by bug. On 38 bugs, both versions score the same, so those bugs say nothing about the difference. v2 does better on 9 bugs and worse on 3. The mean difference is 8 points, and a 95% interval over bugs runs from about 1 to 15 points. So v2 is probably better. But the evidence rests on 12 bugs, so read those 12 traces.</p>
+    <p>Three rules from experiment analysis carry over:</p>
+    <ul>
+      <li><strong>The task is the unit.</strong> Trials of one bug are correlated, so average within each bug and get intervals by resampling bugs. Treating all 300 trials as independent coin flips gives a wrong interval of about −3 to +19 points.</li>
+      <li><strong>Pair the versions.</strong> Run both on the same bugs in the same hour. That removes the biggest source of noise, which is that some bugs are harder than others.</li>
+      <li><strong>Know what you can detect.</strong> A suite like this reliably detects a change of about 10 points. An effect a third that size needs about nine times as many bugs.</li>
+    </ul>
+    <p>Anthropic's eval guide suggests starting with 20 to 50 simple tasks drawn from real failures. Grow the suite as the gains get smaller. Also decide what "better" means before you look. For example, success must rise with an interval above zero, and no new rule violations may appear.</p>
+    <h3>Where A/B-test intuition misleads</h3>
+    <ul>
+      <li>Samples are tiny, so only large effects show. In exchange, you can read every trace.</li>
+      <li>The test set leaks. Tuning prompts on the suite's failures inflates the gain, so keep a held-out set.</li>
+      <li>Budgets cut off the data. A run that hits the cap becomes a cheap failure, so report how often runs hit the budget.</li>
+    </ul>
+  </section>
+
+  <section id="benchmarks">
+    <h2>Benchmarks and their limits</h2>
+    <p>Anthropic reported that Claude Opus 4.5 first scored 42% on the CORE-Bench benchmark. After the team fixed bugs in the evaluation code and loosened the agent's setup, the same model scored 95%. So a benchmark score belongs to a model plus the code around it.</p>
+    <p>Public benchmarks are shared task sets with automatic checks. SWE-bench gives a coding agent 2,294 real GitHub issues from 12 Python repositories. Terminal-Bench 2.0 has 89 hard tasks in terminal environments. In τ-bench, an agent talks to a simulated customer, and the grader checks the database at the end.</p>
+    <p>Benchmarks are useful for comparing models on fixed tasks, but they have limits:</p>
+    <ul>
+      <li>Some tasks are broken. SWE-bench Verified is a subset of 500 tasks that people checked for a clear issue, valid tests, and enough information to solve.</li>
+      <li>Tasks decay. Some Terminal-Bench 1.0 tasks broke when outside websites changed, and version 4.0 dropped tasks that were saturated or had published solutions.</li>
+      <li>Their tasks are not your tasks, and published numbers differ in trials and budgets.</li>
+    </ul>
+    <p>So use benchmarks to shortlist models, and your own suite to decide.</p>
+  </section>
+
+  <section id="online">
+    <h2>Evaluation in production</h2>
+    <p>Suppose Patch passes 74% of its suite, but after launch, developers revert one in five of its pull requests. An offline suite is a sample of the past, so you also measure live:</p>
+    <ul>
+      <li>Run the agent in shadow mode first, where it proposes but does not act, and compare its proposals with what people did.</li>
+      <li>Count late outcomes within a window, such as "reverted within a week".</li>
+      <li>Have people grade a random sample of runs each week.</li>
+      <li>Turn every production failure into a new task for the suite.</li>
+    </ul>
+  </section>
+
+  <section id="running-example">
+    <h2>Running example: Patch gets an eval suite</h2>
+    <p>Patch's suite is 50 past bugs that a person fixed, each pinned to the commit before the fix, with hidden tests taken from the human fix. Each bug runs three times in a fresh container, and every new version runs on the same 50 bugs.</p>
+<pre><code>case = {
+    "id": "bug-0412",
+    "commit": "a1b2c3d",            # the commit before the human fix
+    "task": "Fix tests/test_auth.py::test_login_expired_token",
+    "hidden_tests": ["tests/test_auth.py::test_expiry_boundary"],
+    "scope": ["auth/", "tests/"],
+    "trials": 3,
+    "budget": {"steps": 30, "usd": 3.00},
+}
+
+def trial_ok(run, case):
+    return (run.target_and_suite_passed
+            and run.passed(case["hidden_tests"])
+            and not run.unapproved_gated_actions
+            and run.diff_within(case["scope"]))</code></pre>
+  </section>
+
+  <section id="design-checkpoint">
+    <h2>Design checkpoint 5: the expense agent</h2>
+    <div class="exercise">
+      <p>A 300-person company wants an expense agent. Employees forward receipts by email or upload a photo. The agent reads the receipt, checks it against the travel and expense policy, files the expense in the finance system, and routes it for manager approval. Employees can also ask it questions such as "why was my expense rejected?"</p>
+      <ol>
+        <li>Name three ways this agent could fail silently.</li>
+        <li>What guards would you add?</li>
+        <li>How would you build an evaluation set?</li>
+        <li>What counts as a successful trial?</li>
+        <li>Which metrics would you watch in production?</li>
+      </ol>
+      <label for="cp-5-notes">Your answers</label>
+      <textarea id="cp-5-notes" class="ex-notes" rows="8"></textarea>
+      <details class="reveal">
+        <summary>Reveal one reasonable answer</summary>
+        <ol>
+          <li>A misread amount ("1.240,00 EUR" read as 1.24). A duplicate submission after a retry. Routing to a former manager. The wrong regional policy. Or "compliant" when it is not.</li>
+          <li>Checks in code: the total matches the line items, a currency is found, and the date is in range. Duplicate detection by receipt hash. Idempotency keys on submission. Confidence thresholds that trigger "needs info". Routing read from HR at use time. Sampled human audits.</li>
+          <li>A few hundred past receipts, with fields and policy outcomes labeled by finance. Include hard cases: foreign currency, handwriting, many line items, duplicates, policy edge cases, and injected text. Replay them against a fake finance API, several trials each.</li>
+          <li>Correct fields, the correct policy decision, correct routing, no duplicate submission, and no policy violations. A trial fails if any required rule fails, even if the final message sounds right.</li>
+          <li>Audited extraction accuracy, exception rate, duplicate rate (target zero), time to submission, cost per receipt, employee corrections, and approver overrides.</li>
+        </ol>
+        <p>This is one reasonable answer. Notice that everything that decides success is checked outside the model.</p>
+      </details>
+    </div>
+  </section>
+
+  <section id="what-goes-wrong">
+    <h2>What goes wrong</h2>
+    <div class="failure">
+      <h3>Grading the claim instead of the world</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>The grader reads the agent's final message, so "all tests pass" counts as a pass even when the tests fail.</dd>
+        <dt>How to spot it</dt><dd>Check the end state yourself on a sample of passed trials, and count the disagreements.</dd>
+        <dt>What to do</dt><dd>Grade the world. Rerun the tests inside the grader, and inspect the diff.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Leaky trials</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>Something survives between trials, such as a memory entry or a leftover file.</dd>
+        <dt>How to spot it</dt><dd>Success rises with the trial number within a task.</dd>
+        <dt>What to do</dt><dd>Start every trial fresh, reset memory and skills, and shuffle the task order.</dd>
+      </dl>
+    </div>
+    <div class="failure">
+      <h3>Comparing across time</h3>
+      <dl>
+        <dt>Why it happens</dt><dd>Between two runs, the provider updated the model behind the same name, or a package or website changed.</dd>
+        <dt>How to spot it</dt><dd>The old version's score moves when you rerun it unchanged.</dd>
+        <dt>What to do</dt><dd>Run both versions in the same window, and record model ids and package versions with every trial.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="you-decide">
+    <h2>You decide, AI builds</h2>
+    <div class="decide-grid">
+      <div class="decide">
+        <h3>Decide yourself</h3>
+        <ul>
+          <li>What success means for each task, and which rules fail a trial.</li>
+          <li>Which tasks go in the suite, including hard and hostile ones.</li>
+          <li>What counts as "better", and whether pass@k or pass^k fits.</li>
+        </ul>
+      </div>
+      <div class="delegate">
+        <h3>Delegate to AI</h3>
+        <ul>
+          <li>The harness that replays tasks in fresh containers.</li>
+          <li>Trace capture, the metrics, and the intervals.</li>
+          <li>Fault injection for recovery tests.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="check-yourself">
+    <h2>Check yourself</h2>
+    <div class="quiz">
+      <p class="q">How do we evaluate agents? (Q28)</p>
+      <details class="answer"><summary>Answer</summary><p>Build tasks with checks for the outcome and the rules. Run each task several times in a fresh environment, compare versions on the same tasks, and keep measuring in production.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">A support agent will handle the same kind of request for thousands of customers. Which summary fits best?</p>
+      <ol class="options">
+        <li>pass@5: at least one of five trials succeeds</li>
+        <li data-correct>pass^5: all five trials succeed</li>
+        <li>Average tokens per run</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>pass^k, because each customer gets one attempt and every failure costs you.</p></details>
+    </div>
+    <div class="quiz">
+      <p class="q">Patch v1 and v2 each ran 50 bugs, three trials per bug. What should the confidence interval treat as one unit?</p>
+      <ol class="options">
+        <li>A trial, so 150 per version</li>
+        <li data-correct>A bug: average the trials per bug, then compare bug by bug</li>
+        <li>A model call</li>
+      </ol>
+      <details class="answer"><summary>Answer</summary><p>The bug, because trials of one bug are correlated. Pooling the trials gives the wrong interval.</p></details>
+    </div>
+  </section>
+
+  <section id="takeaways">
+    <h2>Takeaways</h2>
+    <ul>
+      <li>Grade the end state and the rules, not the agent's claim. Read each metric next to the one that keeps it honest.</li>
+      <li>Use pass^k when every failure costs you, and pass@k when someone can pick the best attempt.</li>
+      <li>Treat the task as the unit. Compare versions task by task, in the same window, and decide what counts as better before you look.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying evals for AI agents</a> (Anthropic, January 2026). Tasks, trials, graders, and how bugs in the eval code distort scores.</li>
+      <li><a href="https://arxiv.org/abs/2406.12045">τ-bench</a> (Yao and others, June 2024). Tool-using agents graded on the final database state, and the paper that defines pass^k.</li>
+    </ul>
+  </section>
+</main>
+<script defer src="assets/chapters.js"></script>
+<script defer src="assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+/* Architecture explorer (chapter 14). All text is at least .82rem (13px). */
+.arch-sel-label { margin: .1rem 0 .4rem; font-size: .92rem; font-weight: 700; color: var(--text-2); }
+.arch-w .w-tabs { margin-bottom: .85rem; }
+.arch-task { margin: .1rem 0 .8rem; font-size: 1rem; line-height: 1.55; }
+
+/* The verdict comes first and is the largest text in the widget. */
+.arch-verdict-box { margin: 0 0 .6rem; padding: .85rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-sunk); }
+.arch-verdict { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline; margin: 0 0 .4rem; }
+.arch-verdict .w-status { font-size: .95rem; }
+.arch-verdict-what { font-size: .92rem; color: var(--text-2); }
+.arch-reason { margin: 0; font-size: 1.02rem; line-height: 1.55; }
+
+.arch-others-row { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; margin: 0 0 .9rem; }
+.arch-others-title { margin: 0; font-size: .88rem; color: var(--text-3); }
+.arch-others { display: flex; flex-wrap: wrap; gap: .35rem; }
+.arch-other {
+  font: 600 .86rem/1.2 var(--font);
+  padding: .32rem .65rem;
+  color: var(--text-2); background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer;
+}
+.arch-other:hover { border-color: var(--border-strong); color: var(--text); }
+.arch-other[aria-pressed="true"] { border-color: var(--text); color: var(--text); }
+.arch-v-helps { color: var(--ok); }
+.arch-v-neutral { color: var(--mid); }
+.arch-v-hurts { color: var(--bad); }
+
+/* The trace is the main picture; the dimensions panel is secondary and calmer. */
+.arch-main { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: .8rem; align-items: start; }
+@media (max-width: 760px) { .arch-main { grid-template-columns: 1fr; } }
+.arch-calls { margin: 0 0 .55rem; font-size: .9rem; font-weight: 650; color: var(--text-2); }
+.arch-trace { list-style: none; margin: 0; padding: 0; font-size: .92rem; line-height: 1.5; }
+.arch-trace li { margin: 0; padding: .38rem .55rem; border-left: 3px solid transparent; border-bottom: 1px dashed var(--border); }
+.arch-trace li:last-child { border-bottom: 0; }
+.arch-trace li.is-call { border-left-color: var(--model); background: var(--model-bg); }
+.arch-who { font-weight: 700; margin-right: .3rem; }
+.arch-flag {
+  display: inline-block; margin-left: .45rem;
+  font-size: .82rem; font-weight: 650;
+  padding: .02rem .45rem; border-radius: 4px; border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.arch-flag.ok { color: var(--ok); }
+.arch-flag.mid { color: var(--mid); }
+.arch-flag.bad { color: var(--bad); }
+
+.arch-dims-panel { background: var(--bg-elev); }
+.arch-shape { margin: 0 0 .5rem; font: .86rem/1.45 var(--mono); color: var(--text-2); }
+.arch-dims { margin: 0; }
+.arch-dims dt { margin-top: .6rem; font-size: .86rem; font-weight: 700; color: var(--text-3); }
+.arch-dims dt:first-child { margin-top: 0; }
+.arch-dims dd { margin: .1rem 0 0; font-size: .9rem; line-height: 1.45; color: var(--text-2); }
+.arch-w code { font-size: .9em; }
