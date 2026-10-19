@@ -161,7 +161,7 @@ FAILED tests/test_billing.py::test_refund_rounding - assert ...
     <h2>Step through five calls</h2>
     <p>The widget follows five calls through a runtime. Watch the count of blocked calls: a blocked call never counts as run.</p>
     <div class="widget" data-widget="tool-call">
-      <p class="noscript">Interactive widget. Without JavaScript, here are the five cases. A valid call runs and returns a result tied to call_1. A call with "all" where a number belongs fails the schema, so nothing runs, and the model retries as call_2. A read of <code>../deploy/prod.env</code> passes the schema but breaks the rules, so it is denied. Two reads run at once: the second finishes first, the first fails, and each result keeps its id. A 1,227-line test log is saved, and the marker in the preview names the file.</p>
+      <p class="noscript">Interactive widget. Without JavaScript: a valid call runs and returns a result tied to call_1. A call with "all" where a number belongs fails the schema, so nothing runs and the model retries. A read of <code>../deploy/prod.env</code> passes the schema, but the rules deny it. Two parallel reads finish out of order, and each result keeps its id. A 1,227-line log is saved, and the preview's marker names the file.</p>
     </div>
   </section>
 
@@ -181,7 +181,7 @@ FAILED tests/test_billing.py::test_refund_rounding - assert ...
     <h2>How the model finds tools</h2>
     <p>Patch has four tools, so its runtime sends all four definitions with every call. An assistant with 300 tools cannot, because each definition costs tokens on every call, and similar tools make choices harder.</p>
     <p>There are four common fixes. A static list sends the same tools every time. A filtered list hides tools that cannot work right now, such as one with missing credentials. A tool server lists its tools on request. Tool search gives the model one search tool over a large catalog, and the runtime loads only the definitions it asks for.</p>
-    <p>MCP (Model Context Protocol) is a standard for tool servers. An MCP server tells your runtime which tools it has, and it runs the calls your runtime forwards. MCP is not an agent loop, because your runtime still decides what runs. It is not a security boundary either. The server's tools have whatever access the server has, and their text in your context is untrusted.</p>
+    <p>MCP (Model Context Protocol) is a standard way for a server to offer tools to your runtime. An MCP server tells your runtime which tools it has, and it runs the calls your runtime sends it. MCP is not an agent loop, because your runtime still decides what runs. It is not a security boundary either: the spec says the protocol cannot enforce its own security rules, so your runtime has to. Treat a server's tool descriptions and results as untrusted unless you trust the server.</p>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
       <p>An MCP tool = a tool whose definition and code live in another process, reached through a standard protocol.</p>
@@ -350,6 +350,15 @@ for path in sorted({h.path for h in hits}):
       <li>Check every call in code before it runs. A blocked call never runs, but it still gets a result.</li>
       <li>Send failures and big outputs back as results the model can act on.</li>
       <li>Give each tool an effect class. Enforce permissions in the dispatcher and the sandbox, not in the prompt.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/writing-tools-for-agents">Writing effective tools for agents</a> (Anthropic, September 2025). How to design tools a model uses well: fewer tools, readable output, truncation by default, and errors that suggest a fix.</li>
+      <li><a href="https://www.anthropic.com/engineering/code-execution-with-mcp">Code execution with MCP</a> (Anthropic, November 2025). Why calling tools from code can save context, and why the agent's code then needs a sandbox.</li>
+      <li><a href="https://modelcontextprotocol.io/specification/latest">Model Context Protocol specification</a> (version 2026-07-28). This version is stateless: there is no session or handshake, and each request carries its own protocol version.</li>
     </ul>
   </section>
 </main>

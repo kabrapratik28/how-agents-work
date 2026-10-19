@@ -162,7 +162,7 @@ state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre
 
   <section id="coding-agent-state">
     <h2>State in a coding agent</h2>
-    <p>For a coding agent, state usually includes the items below. The table shows where each one lives, whether the model needs to see it, and why.</p>
+    <p>For a coding agent, state usually includes these items:</p>
     <div class="table-wrap">
       <table class="compare">
         <caption>Coding-agent state: where it lives and what the model sees</caption>
@@ -195,7 +195,7 @@ state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre
         <li><strong>Hermes</strong> (v0.22.2) removed its "context pressure" warnings because they made models give up early on complex tasks.</li>
       </ul>
     </aside>
-    <p>Now sort these items yourself. For each one, pick the kind of state it is.</p>
+    <p>Sort these items into the five kinds of state:</p>
     <div class="quiz-group">
       <p class="quiz-score" aria-live="polite">Pick an answer for each card.</p>
       <div class="quiz sorter">
@@ -333,6 +333,14 @@ state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre
       <li>Keep anything that must survive in runtime state or storage, never only in the context.</li>
       <li>The world is the truth for world facts. Re-read before you write, and treat old results as stale once something changes.</li>
       <li>Show the model what changes its next decision. Keep control, enforcement, and secrets in your code.</li>
+    </ul>
+  </section>
+
+  <section id="going-deeper">
+    <h2>Going deeper</h2>
+    <ul>
+      <li><a href="https://www.anthropic.com/engineering/managed-agents">Scaling Managed Agents: Decoupling the brain from the hands</a> (Anthropic, April 2026). The session is "the append-only log of everything that happened", kept outside the context and the loop, so a crashed loop restarts from it.</li>
+      <li><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Effective harnesses for long-running agents</a> (Anthropic, November 2025). Each session starts with no memory, so the harness keeps state in a progress file, a feature list, and git, which the next session reads first.</li>
     </ul>
   </section>
 </main>
