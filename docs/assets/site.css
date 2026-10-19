@@ -322,6 +322,7 @@ table.compare caption { caption-side: top; text-align: left; font-weight: 650; c
 table.compare th, table.compare td { border-bottom: 1px solid var(--border); padding: .5rem .65rem; text-align: left; vertical-align: top; }
 table.compare thead th { font-size: .82rem; letter-spacing: .03em; text-transform: uppercase; color: var(--text-3); border-bottom: 2px solid var(--border-strong); white-space: nowrap; }
 table.compare tbody th { font-weight: 650; }
+@media (max-width: 640px) { table.compare thead th { white-space: normal; } }
 
 /* Failure cards */
 .failure { margin: 1rem 0; padding: .95rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
