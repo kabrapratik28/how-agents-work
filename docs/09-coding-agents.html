@@ -15,26 +15,26 @@
   <header class="chapter-head">
     <p class="kicker">Chapter 9 · Capabilities built on the loop</p>
     <h1>Coding agents</h1>
-    <p class="lede">Coding suits agents unusually well, because the tests say within seconds whether a change worked, and git can undo the changes that did not.</p>
+    <p class="lede">Coding suits agents unusually well, because the tests say within seconds whether a change worked, and changes made in a clean git checkout are easy to undo.</p>
     <div class="loop-map" data-focus="all"></div>
   </header>
 
   <section id="why-coding">
     <h2>Why coding fits an agent so well</h2>
-    <p>Patch runs <code>pytest</code> and sees <code>assert 200 == 401</code> two seconds later. It changes one line, runs the test again, and sees it pass. If the change had been wrong, <code>git checkout</code> would have put the file back. Compare an agent that books flights. A booking costs money at once, and undoing it means asking for a refund.</p>
+    <p>Patch runs <code>pytest</code> and sees <code>assert 200 == 401</code> two seconds later. It changes one line, runs the test again, and sees it pass. Patch works in a clean checkout, so if the change had been wrong, <code>git checkout</code> would have put the file back. Compare an agent that books flights. A booking costs money at once, and undoing it means asking for a refund.</p>
     <p>That contrast shows what makes coding a good fit:</p>
     <ul>
       <li><strong>The work is text.</strong> Code, test output, and error messages are what the model reads and writes best.</li>
       <li><strong>The tools are cheap.</strong> Reading a file or running a command takes a few lines of ordinary code.</li>
       <li><strong>Feedback is fast and exact.</strong> A failing test says what broke, so the model can fix it on the next step.</li>
       <li><strong>The real state lives in files.</strong> The repo on disk holds the truth, so nothing depends on the model remembering it.</li>
-      <li><strong>Mistakes are cheap to undo.</strong> Git restores any file, and a branch keeps experiments away from everyone else.</li>
+      <li><strong>Mistakes are cheap to undo.</strong> In a clean checkout, git can restore every file the agent edited, and a branch keeps unfinished work off the main branch.</li>
       <li><strong>Success can be checked.</strong> Your code can run the tests itself instead of trusting the model's "done". But the agent can edit the tests too, as the <a href="#verification">section on checking the work</a> shows.</li>
     </ul>
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
       <p>A coding agent works like a developer at a terminal: type a command, read the output, decide on the next command.</p>
-      <p class="breaks"><strong>Where it breaks:</strong> the developer remembers the last hour. The model remembers nothing between calls, so your code sends it the whole session every time.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> the developer remembers the last hour. The model remembers nothing between calls, so your code sends it the relevant history with every call.</p>
     </aside>
   </section>
 
@@ -48,7 +48,7 @@
         <tbody>
           <tr><th scope="row"><code>search_files</code></th><td>Nothing</td><td>Finds text across the repo</td></tr>
           <tr><th scope="row"><code>read_file</code></th><td>Nothing</td><td>Returns a file, often one page at a time</td></tr>
-          <tr><th scope="row"><code>edit_file</code></th><td>Files in the repo (git can undo it)</td><td>Replaces exact text, or writes a whole file</td></tr>
+          <tr><th scope="row"><code>edit_file</code></th><td>Files in the repo (git undoes it in a clean checkout)</td><td>Replaces exact text, or writes a whole file</td></tr>
           <tr><th scope="row"><code>run_command</code></th><td>Depends on the command</td><td>Runs the tests, a build, a linter, or git</td></tr>
         </tbody>
       </table>
@@ -90,13 +90,13 @@
 
   <section id="search">
     <h2>Finding the right code</h2>
-    <p>Patch needs the code that checks whether a token has expired. It calls <code>search_files("expires_at")</code>, gets three matches, and reads the one in <code>auth/session.py</code>. The search ran on the files as they are now, with nothing prepared in advance.</p>
-    <p>This is called agentic search, because the model searches step by step, the way a developer uses grep. The alternative is an index, built ahead of time, that finds code by similarity. An index can be faster on a huge repo. But it goes stale when the code changes, and similar-looking code is not always the code that matters (<a href="05-memory.html#retrieval-trace">chapter 5</a>). So many coding agents search first, and add an index only when the repo is too big to search quickly.</p>
+    <p>Patch needs the code that checks whether a token has expired. It calls <code>search_files("expires_at")</code>, gets three matches, and reads the one in <code>auth/session.py</code>. The search ran on the files as they are now.</p>
+    <p>This is called agentic search: the model searches step by step, the way a developer uses grep. The alternative, an index built ahead of time, can be faster on a huge repo, but it goes stale when the code changes (<a href="05-memory.html#retrieval-trace">chapter 5</a> covers its other limits). So many coding agents search first, and add an index only for very large repos.</p>
   </section>
 
   <section id="walkthrough">
     <h2>A walkthrough: fix the failing auth test</h2>
-    <p>Here is the whole run. The agent collects evidence before it edits, and again before it stops.</p>
+    <p>In this run, the agent collects evidence before it edits, and again before it stops.</p>
     <ol class="trace">
       <li><span class="badge user">User</span> The auth test is failing. Please fix it.</li>
       <li><span class="badge model">Model</span> <code>run_command("pytest tests/test_auth.py -q")</code>, to see the failure first</li>
@@ -123,21 +123,20 @@
     <ul>
       <li><strong>Read the diff, not only the result.</strong> A green run that also changed a test file needs a person to look.</li>
       <li><strong>Protect the tests.</strong> For a bug fix, block edits to <code>tests/</code> and the CI settings, or send them for review.</li>
-      <li><strong>Check the size of the change.</strong> A fix for one login bug should not touch twenty files.</li>
-      <li><strong>Keep a check the agent never saw.</strong> When you evaluate an agent, run hidden tests it could not edit.</li>
     </ul>
     <p>Then let your code decide "done" from the exit code of the test command, not from the model's summary. That is the split from <a href="00-llm-vs-agent.html#finished">chapter 0</a> between saying done and proving it. Claude Code's best-practices guide shows one way to enforce it: a Stop hook, a script that blocks the turn from ending until the check passes.</p>
   </section>
 
   <section id="git">
     <h2>Git: undo and isolation</h2>
-    <p>Patch's first attempt at the fix breaks three other tests. One command, <code>git checkout auth/session.py</code>, puts the file back, and Patch tries another idea.</p>
-    <p>Version control gives a coding agent undo, so trying an idea costs little. It gives isolation, because a branch or a separate working copy (a worktree) lets several agents share one repo without overwriting each other.</p>
-    <p>Git covers only the files, though. If a user rewinds the conversation, the files on disk stay as they are. The code is world state, separate from the message history (<a href="03-state.html#world-state">chapter 3</a>). To rewind both, your code must save a snapshot of the files along with the conversation.</p>
+    <p>Patch's first attempt at the fix breaks three other tests. Patch started from a clean checkout, so one command, <code>git checkout auth/session.py</code>, puts the file back, and Patch tries another idea.</p>
+    <p>Undo makes trying an idea cheap. But git can restore only what it has a saved copy of. It cannot bring back uncommitted work that an edit overwrote, and it cannot undo what a command did outside the repo, such as a database write. So start each task from a clean checkout, and treat commands with outside effects as permanent.</p>
+    <p>Git also gives isolation, but only when each agent works in its own worktree, a separate working copy of the repo. Two agents in one folder edit the same files, even on different branches. A worktree prevents accidental collisions, not access: to stop one agent from touching another's files, use separate mounts or file permissions (<a href="10-sandboxing.html#filesystem-isolation">chapter 10</a>).</p>
+    <p>Rewinding the conversation does not rewind the files, because the code is world state, separate from the message history (<a href="03-state.html#world-state">chapter 3</a>). To rewind both, your code must also save a snapshot of the files.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
-        <li><strong>Hermes</strong> (v0.22.2) can save the working files into a separate git store before risky edits; this is off by default. Its <code>/rollback</code> command then restores the files and also undoes the last turn of the conversation, so the two stay in step.</li>
+        <li><strong>Hermes</strong> (v0.22.2) can save the working files into a separate git store before risky edits (off by default). Its <code>/rollback</code> command then restores the files and undoes the last turn of the conversation together.</li>
       </ul>
     </aside>
   </section>
@@ -155,10 +154,11 @@
 
   <section id="running-example">
     <h2>Running example: Patch runs the full coding loop</h2>
-    <p>Patch now runs the whole cycle on its own: it reproduces the failure, reads the code, edits it, and reruns the tests. Your code counts the task as done only when the tests pass. Nothing yet limits what else Patch can touch on your machine, so chapter 10 puts it in a sandbox.</p>
-<pre><code>+ tools = [search_files, read_file, edit_file, run_command]
-+ answer = run_agent(task, tools, max_steps=30,
-+                    done_check=lambda s: s.last_test == "passed")</code></pre>
+    <p>Patch version 9 adds no new parts: it runs the whole loop on the failing auth test with everything from chapters 2 to 8. At the end of the run, its state shows a passing test after the last edit, no changed test files, and a passing review, so the done check from chapters 3 and 6 succeeds. Nothing yet limits what else Patch can touch on your machine, so chapter 10 puts it in a sandbox.</p>
+<pre><code>state["last_edit_step"] = 3
+state["last_test"] = {"cmd": "pytest tests/test_auth.py -q", "exit": 0, "after_step": 4}
+state["files_changed"] = ["auth/session.py"]     # nothing under tests/
+# done(state): a passing run after the last edit, no test edited, review ok</code></pre>
   </section>
 
   <section id="design-checkpoint">
@@ -190,9 +190,9 @@
     <div class="failure">
       <h3>A huge output fills the context</h3>
       <dl>
-        <dt>Why it happens</dt><dd>A long build log, or a whole large file, comes back as one result and pushes the useful lines out of view.</dd>
+        <dt>Why it happens</dt><dd>A long build log or a whole large file comes back as one result and buries the useful lines.</dd>
         <dt>How to spot it</dt><dd>Count the tokens in each tool result, and look for results far larger than the rest.</dd>
-        <dt>What to do</dt><dd>Cap each result, keep the first and last lines, and save the full text to a file the model can open. <a href="04-context.html#compaction">Chapter 4</a> covers this.</dd>
+        <dt>What to do</dt><dd>Cap each result, keep the first and last lines, and save the full text to a file (<a href="04-context.html#compaction">chapter 4</a>).</dd>
       </dl>
     </div>
     <div class="failure">
@@ -208,7 +208,7 @@
       <dl>
         <dt>Why it happens</dt><dd>The model loses track of an idea that already failed, often after old steps were summarized.</dd>
         <dt>How to spot it</dt><dd>Look for the same edit, or the same failing command, repeated across steps.</dd>
-        <dt>What to do</dt><dd>Keep a short list of attempts and results in state, show it to the model, and stop after a set number of failures.</dd>
+        <dt>What to do</dt><dd>Keep a short list of attempts in state, show it to the model, and stop after a set number of failures.</dd>
       </dl>
     </div>
   </section>
@@ -221,7 +221,7 @@
         <ul>
           <li>Which tools the agent gets, and what each one may change.</li>
           <li>What counts as done: which tests, and whether the agent may edit them.</li>
-          <li>How undo works: branches, worktrees, and file snapshots.</li>
+          <li>How undo works: clean checkouts, worktrees, and file snapshots.</li>
         </ul>
       </div>
       <div class="delegate">
@@ -239,7 +239,7 @@
     <h2>Check yourself</h2>
     <div class="quiz">
       <p class="q">Why is coding such a natural fit for an agent? (Q16)</p>
-      <details class="answer"><summary>Answer</summary><p>The work is text, the tools are cheap, and tests give fast, exact feedback. The state lives in files, git undoes mistakes, and your code can check success by running the tests.</p></details>
+      <details class="answer"><summary>Answer</summary><p>The work is text, the tools are cheap, and tests give fast, exact feedback. The state lives in files, git can undo edits made in a clean checkout, and your code can check success by running the tests.</p></details>
     </div>
     <div class="quiz">
       <p class="q">An agent reports that all tests pass. What should you check before you trust it?</p>
@@ -266,7 +266,7 @@
     <ul>
       <li>Give a coding agent few tools, and shape them for the model: clear errors, paged reads, and edits that must match exactly.</li>
       <li>Let your code decide "done" from a test run, and stop the agent from editing the tests that decide it.</li>
-      <li>Use git for undo and isolation, and save file snapshots if users can rewind the conversation.</li>
+      <li>Start each task in a clean checkout and its own worktree, so git can undo its edits, and save file snapshots if users can rewind the conversation.</li>
     </ul>
   </section>
 

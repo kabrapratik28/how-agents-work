@@ -105,7 +105,11 @@
       else if (st.denylist) note = 'The denylist catches the text rm -rf /, but this command only becomes rm -rf / when it runs. Containment keeps the damage inside the sandbox.';
       else note = 'The command still runs, but it can only delete files inside the sandbox.';
     } else if (id === 'force-push') {
-      if (st.branchProtection) {
+      if (egress === 'deny') {
+        push('Egress: deny all', 'containment', 'blocks');
+        verdict = 'blocked';
+        note = 'The sandbox cannot reach the Git server, so the push fails. Normal pushes fail too.';
+      } else if (st.branchProtection) {
         push('Branch protection on the Git server', 'external', 'blocks');
         verdict = 'blocked';
         note = 'The Git server refuses the force-push, whatever happens inside the sandbox.';

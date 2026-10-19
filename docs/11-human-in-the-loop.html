@@ -33,11 +33,11 @@
 
   <section id="mechanism">
     <h2>The mechanism</h2>
-    <p>The model asks to run <code>DROP TABLE sessions_2023</code>. Your code matches the DROP against its rules, saves the run with this exact request, and asks in the team's chat: "Approve or reject?" Two hours later, someone rejects it with the note "archive it first". Your code reloads the run, records the rejection as the request's result, and calls the model again, which now proposes archiving the table.</p>
-    <p>Every approval gate has the same five steps:</p>
+    <p>A database agent asks to run <code>DROP TABLE sessions_2023</code>. Your code matches the DROP against its rules and holds the request instead of running it. It asks in the team's chat: "Approve or reject?" Two hours later, someone rejects it with the note "archive it first". Your code records the rejection as the request's result and calls the model again, which now proposes archiving the table.</p>
+    <p>Every approval gate catches a request, asks about it, waits, and then runs or rejects it. The simplest version keeps the pending request in memory and blocks the process until someone answers. That works for short waits, but a crash or restart loses the request. Patch's runs can wait overnight, so its gates use a durable design with five steps:</p>
     <ol>
       <li><strong>Intercept.</strong> A rule in your code matches the request before it runs, so no wording in the prompt can get past it.</li>
-      <li><strong>Save a checkpoint.</strong> Your code stores the run with the exact pending request, so the process could stop now and continue tomorrow.</li>
+      <li><strong>Save a checkpoint.</strong> Your code stores the run with the exact pending request, so the process can exit and a worker can continue tomorrow, even after a restart.</li>
       <li><strong>Ask about this exact request.</strong> The person approves this SQL statement, this file, or this amount, not "database access" in general.</li>
       <li><strong>Wait.</strong> Your code waits, not the model, so no model call runs and no tokens are spent.</li>
       <li><strong>Resume.</strong> Approve runs the request exactly as approved. Reject becomes the request's result. Edit changes the arguments first.</li>
@@ -46,21 +46,21 @@
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
       <p>Human approval works like a blocking authorization gate: the request stops, an authorizer allows or denies it, and only then does it continue.</p>
-      <p class="breaks"><strong>Where it breaks:</strong> a normal authorization check decides in microseconds from a fixed policy. Here a person may take days to judge an action a model made up. So your code must save the request for the whole wait, show enough to judge it, and check again anything the person changes.</p>
+      <p class="breaks"><strong>Where it breaks:</strong> a normal authorization check decides in microseconds from a fixed policy. Here a person may take days to judge an action a model made up. So your code has to show enough to judge the request and check again anything the person changes.</p>
     </aside>
     <p>Step through both outcomes below: approve the DROP, or reject it and watch the safer proposal pass its own check.</p>
     <div class="widget" data-widget="agent-loop" data-scenarios="approval" data-title="An approval gate, step by step">
-      <p class="noscript">Interactive widget. In words: a rule in your code blocks <code>DROP TABLE sessions_2023</code>, saves the exact request, and asks a person. Approve, and your code checks the request is unchanged, then runs it. Reject, and the rejection becomes the result. The model then proposes archiving, and that new request passes its own check.</p>
+      <p class="noscript">Interactive widget. In words: a rule in your code blocks <code>DROP TABLE sessions_2023</code>, saves the exact request, and asks a person. Approve, and the unchanged request runs. Reject, and the rejection becomes the result; the model then proposes archiving, which passes its own check.</p>
     </div>
     <aside class="callout reduce">
       <p class="callout-title">What does this reduce to?</p>
-      <p>Approval gate = a rule that matches a request + a saved checkpoint + a person's decision + running only the request that was approved.</p>
+      <p>Approval gate = a rule that matches a request + a pause until a person decides + running only the request they approved.</p>
     </aside>
   </section>
 
   <section id="approval-gates">
     <h2>What to gate</h2>
-    <p>Patch's rule says that any <code>run_sql</code> request containing DROP, DELETE, or TRUNCATE needs a person. The rule is specific, and it lives in code.</p>
+    <p>The database agent's rule says that any <code>run_sql</code> request containing DROP, DELETE, or TRUNCATE needs a person. The rule is specific, and it lives in code.</p>
     <p>Decide what to gate by what an action can break, using the effect classes from <a href="02-tools.html#destructive-tools">chapter 2</a>. Reading and most changes you can undo run freely. Actions that leave your system or cannot be undone are the ones to gate:</p>
     <div class="table-wrap">
       <table class="compare">
@@ -103,8 +103,8 @@
 
   <section id="deployment">
     <h2>Deployment</h2>
-    <p>Patch's <code>deploy-staging</code> skill pushes a build to the staging servers. A bad deploy affects everyone who uses that environment, so a person signs off first.</p>
-    <p>The strongest version of this gate lives outside the agent. Many deploy pipelines can require an approval before a protected environment changes, however the request arrives. That is an external service control from chapter 10, so it holds even if the agent is compromised.</p>
+    <p>Patch deploys through one narrow tool, <code>deploy_staging</code>, which runs in your code outside the sandbox and holds a credential that can deploy only to staging. A bad deploy affects everyone who uses that environment, so the tool asks a person first.</p>
+    <p>The strongest version of this gate lives outside the agent. Many deploy pipelines can require an approval before a protected environment changes. That is an external service control from chapter 10, so it holds even if the agent is compromised.</p>
   </section>
 
   <section id="credential-use">
@@ -123,7 +123,7 @@
   <section id="async-approvals">
     <h2>Approvals that take hours</h2>
     <p>A nightly Patch run reaches the <code>open_pr</code> gate at 2 a.m. Your code saves the checkpoint, sends the request to the team's chat, and lets the process exit. At 9 a.m. a developer approves. A worker loads the checkpoint, confirms the request is unchanged, and opens the pull request.</p>
-    <p>This works because the pending request lives in storage, not in a running process, so many runs can wait for days at once. <a href="12-long-running.html">Chapter 12</a> covers the storage and workers.</p>
+    <p>Because each pending request lives in storage, many runs can wait for days at once. <a href="12-long-running.html">Chapter 12</a> covers the storage and workers.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
@@ -135,11 +135,11 @@
 
   <section id="running-example">
     <h2>Running example: Patch gets approval gates</h2>
-    <p>Patch now asks a person before it opens a pull request, migrates a shared database, deploys, or deletes files outside the repo. The container already blocks that last one, so that gate is a second layer.</p>
-<pre><code>def policy(call):
-    if call.name in {"open_pr", "deploy_staging"}:   return "ask"
-    if call.name == "run_sql" and destructive(call):  return "ask"
-    if deletes_outside_repo(call):                    return "ask"
+    <p>Patch now does its riskiest work through three narrow tools that run in your code, outside the sandbox: <code>open_pr</code>, <code>run_migration</code>, and <code>deploy_staging</code>. Each holds its own scoped credential and asks a person first, and the deploy-staging skill now calls <code>deploy_staging</code> instead of running a script. The sandbox has no network route to the database or the staging servers, so no shell command can reach them on its own. Deleting files outside the repo is also gated, as a second layer behind the container.</p>
+<pre><code>GATED = {"open_pr", "run_migration", "deploy_staging"}   # run outside the sandbox
+def policy(call):
+    if call.name in GATED:          return "ask"
+    if deletes_outside_repo(call):  return "ask"   # second layer: nothing is mounted there
     return "allow"</code></pre>
   </section>
 
@@ -221,16 +221,16 @@
     <h2>Check yourself</h2>
     <div class="quiz">
       <p class="q">How does a human approval gate work? (Q25)</p>
-      <details class="answer"><summary>Answer</summary><p>Your code catches a matching request before it runs, saves it in a checkpoint, and asks a person to approve, edit, or reject it. An approved request then runs exactly as approved, an edited or new one is checked again, and a rejection becomes the result the model sees.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Your code catches a matching request before it runs, holds it, and asks a person to approve, edit, or reject it. Approved requests run exactly as approved, edited or new ones are checked again, and a rejection becomes the model's result. Patch's durable design also saves the request, so the wait survives a restart.</p></details>
     </div>
     <div class="quiz">
       <p class="q">While a run waits for approval, what is running?</p>
       <ol class="options">
         <li>The model, holding the decision in mind</li>
-        <li data-correct>No model call; your code has saved the pending request and is waiting</li>
+        <li data-correct>No model call; your code holds the pending request and waits</li>
         <li>The tool, paused halfway through</li>
       </ol>
-      <details class="answer"><summary>Answer</summary><p>Your code waits, not the model. Because the request is saved, the process can even exit and resume later.</p></details>
+      <details class="answer"><summary>Answer</summary><p>Your code waits, not the model. In a durable design like Patch's, the request is saved, so the process can even exit and resume later.</p></details>
     </div>
     <div class="quiz">
       <p class="q">A nightly run reaches an approval gate at 2 a.m. What should your code do?</p>
@@ -242,7 +242,7 @@
     <h2>Takeaways</h2>
     <ul>
       <li>Put a person before, during, or after an action, depending on how costly and how reversible a mistake would be.</li>
-      <li>Because the pending request is saved, an approval can wait for hours without holding a running process.</li>
+      <li>Saving the pending request lets an approval wait for hours without holding a running process.</li>
       <li>Ask rarely and specifically, show the real action, and treat silence as a rejection.</li>
     </ul>
   </section>

@@ -60,6 +60,13 @@ export default function (sims, assert) {
   // Hardened: nothing succeeds.
   for (const r of s.run(hardened).results) assert.notEqual(r.verdict, 'succeeds', 'hardened: ' + r.id + ' does not succeed');
 
+  // Deny-all networking blocks both exfiltration and pushing, because no server is reachable.
+  const offline = byId(s.run({ ...permissive, egress: 'deny' }).results);
+  assert.equal(offline['exfil-aws'].verdict, 'blocked', 'deny-all blocks exfiltration');
+  assert.equal(offline['force-push'].verdict, 'blocked', 'deny-all blocks the force-push too');
+  assert.ok(offline['force-push'].controls.some((c) => c.kind === 'containment' && c.effect === 'blocks'),
+    'the deny-all block is credited to containment');
+
   // A blocked force-push is blocked by an external service control.
   const fp = byId(s.run({ ...permissive, branchProtection: true }).results)['force-push'];
   assert.equal(fp.verdict, 'blocked');
