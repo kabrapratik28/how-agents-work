@@ -243,6 +243,7 @@ all three calls send 96,760 input tokens</code></pre>
 +                 return ctx
 +         raise ContextTooLarge(size(ctx), budget)         # never send a call that cannot fit
 +     return ctx                                           # the session log is untouched</code></pre>
+    <p><code>render_task</code> is a few lines of your own code, not something the user types. It copies the goal and the user's rules, word for word, from the user's own messages. Then it adds <code>files_changed</code> and <code>last_test</code> from state. The result is a short block of text. Your code rebuilds it from state on every call, so compaction can never drop it. And because it goes last, it is the newest thing the model reads.</p>
   </section>
 
   <section id="design-checkpoint">
