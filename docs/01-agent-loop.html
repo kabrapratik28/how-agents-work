@@ -103,6 +103,7 @@
         state.add_note("Check failed: " + state.check_output)
     return None                               # keep going</code></pre>
     <p>Notice the order. The hard limits come first, so a model that keeps saying "done" while the check fails still cannot run forever. Then a reply without a tool request leads to a check, not straight to success. That is the split from <a href="00-llm-vs-agent.html#finished">chapter 0</a>: the model says it is done, your code stops, and a check confirms it.</p>
+    <p>In the sketch, <code>success_check()</code> is a few lines of your own code that look at the result itself, not at what the model said about it. For Patch, it runs the tests and passes only if they all pass. The model may say it is done several times in one run, and the check runs each time. When the check fails, your code adds the failure to the history, and the loop goes on. The model reads the failure, keeps working, and later says it is done again. Only a passing check ends the run as a success.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
@@ -110,6 +111,16 @@
         <li><strong>Hermes</strong> (0.22.2) can send a reply back to the model when the model announces an action but never requests a tool. It has no step limit by default. Instead, a watchdog stops a run that makes no progress for 600 seconds.</li>
       </ul>
     </aside>
+
+    <h3 id="no-test">When no test can check the result</h3>
+    <p>Many tasks have no test. Say you ask an agent to summarize a 40-page contract for a manager. Part of "good" is a judgment call, but you still need a check. So split "done" into smaller claims, and check each one with the cheapest thing that can judge it:</p>
+    <ul>
+      <li><strong>Write down what done means, before the run.</strong> Turn the vague goal into a short checklist. For example, the summary names both parties, lists every payment and deadline, says how either side can end the contract, and fits on one page. You can write the list once for each kind of task, or the agent can draft one for the user to approve. If the request is too vague for a list, the agent should ask the user first.</li>
+      <li><strong>Check in code what code can check.</strong> Code can confirm that the summary fits on one page, has every section, and quotes only text that really appears in the contract. These checks cannot prove the summary is good. But they catch the usual early stops, such as a skipped section or a made-up quote.</li>
+      <li><strong>Ask a separate model call to grade the rest.</strong> Send it the contract, the summary, and the checklist. Ask for pass or fail on each item, with a quote from the contract as evidence. Use a fresh call instead of asking the agent, because agents tend to approve their own work (<a href="15-reliability.html#verification-gates">chapter 15</a>). This grader makes mistakes too, so compare it with a person's judgment on some runs before you rely on it.</li>
+      <li><strong>Let a person decide when taste decides.</strong> Then the run ends with "ready for review" instead of "done". The person accepts the result or sends it back with notes. Make the review quick by showing each checklist item next to its evidence.</li>
+    </ul>
+    <p>The rule is the same as for Patch. The model's "done" starts the check, and evidence ends the run. Only the checker changes. <a href="16-evaluation.html#graders">Chapter 16</a> compares code, model, and human checkers in more detail.</p>
   </section>
 
   <section id="vocabulary">
@@ -227,8 +238,8 @@ total over 20 calls:
       <h3>The loop ends too early</h3>
       <dl>
         <dt>Why it happens</dt><dd>The model says it is done before the work is finished, and your code treats that as success.</dd>
-        <dt>How to spot it</dt><dd>Run the success check every time the model says it is done.</dd>
-        <dt>What to do</dt><dd>Accept "done" only with evidence. Send a failed check back to the model.</dd>
+        <dt>How to spot it</dt><dd>The success check fails right after the model says it is done. Without a check, a person finds the unfinished work later.</dd>
+        <dt>What to do</dt><dd>Run the check every time the model says it is done, and accept "done" only when it passes. Send the failure back to the model so it can keep working.</dd>
       </dl>
     </div>
     <div class="failure">
@@ -247,7 +258,7 @@ total over 20 calls:
       <div class="decide">
         <h3>Decide yourself</h3>
         <ul>
-          <li>How a run ends: what counts as success, and which limits apply.</li>
+          <li>How a run ends: what counts as success, how your code checks it, and which limits apply.</li>
           <li>What happens when the model says it is done but the check fails.</li>
           <li>Which shape of loop fits the task.</li>
         </ul>
