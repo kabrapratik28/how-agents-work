@@ -151,7 +151,24 @@ FAILED tests/test_billing.py::test_refund_rounding - assert ...
     <h2>Several calls at once</h2>
     <p>The model asks to read <code>auth/tokens.py</code> and <code>auth/session.py</code> in one reply. Your runtime runs both reads at once. The second finishes first, and then the first fails because the file does not exist.</p>
     <p>So your runtime matches each result to its request by call id, not by finishing order. It returns every result, including the error.</p>
-    <p>Only independent calls can run together. Finding a file and reading it takes two steps, because the read needs the search result. Two writes to the same file at once are a race, which your runtime should refuse.</p>
+    <h3 id="independent">Which calls can run together?</h3>
+    <p>Calls can depend on each other in two ways, and each one is handled in a different place.</p>
+    <p><strong>One call needs another's result.</strong> To read the file a search finds, you need the search result first. This kind sorts itself out, because the model writes every argument before any call in its reply runs. It cannot name the file before the search returns, so the read comes in the next step. Calls in one reply never need each other's output.</p>
+    <p><strong>Two calls touch the same thing.</strong> Say the model asks to edit <code>auth/session.py</code> and run the tests, in one reply. Both calls have complete arguments, but the tests read the file the edit changes. Run them at once, and the tests might check the old code. The model can miss a clash like this, so your runtime decides from what each tool does, not from what the model meant:</p>
+    <ul>
+      <li>Calls that only read, such as <code>read_file</code> and <code>search_files</code>, can run at the same time.</li>
+      <li>A call that changes something runs alone, in the order the model listed it. Writes to different files can share a batch, but two writes to the same file cannot.</li>
+      <li>When you cannot tell what a call changes, treat it as a change. <code>run_command("pytest")</code> can touch anything the tests touch, so it runs alone.</li>
+    </ul>
+    <p>One call at a time, in the listed order, is always correct. Running reads together only makes it faster. You can also tell the model in the system prompt to put only independent calls in one reply. That helps, but the rule in your runtime is what makes a wrong guess safe. The <a href="#destructive-tools">effect classes</a> later in this chapter give each tool the label this rule needs.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Deep Agents</strong> (0.7.28) runs all calls from one reply at once. It refuses a second write, edit, or delete on the same path in that reply.</li>
+        <li><strong>Pi</strong> (1.3.0) also runs calls at once by default and records results in the order the model asked for them. A tool can be marked sequential, and then any batch that contains it runs one call at a time.</li>
+        <li><strong>Hermes</strong> (0.22.2) plans each batch. Read-only tools run at once, and file writes join them only if their paths do not overlap. A tool that asks the user something, such as <code>clarify</code>, never runs alongside other calls.</li>
+      </ul>
+    </aside>
   </section>
 
   <section id="tool-call-widget">
@@ -292,7 +309,7 @@ for path in sorted({h.path for h in hits}):
         <h3>Decide yourself</h3>
         <ul>
           <li>Which tools exist, and which actions get no tool at all.</li>
-          <li>The effect class of each tool, and what each class requires.</li>
+          <li>The effect class of each tool, what each class requires, and which calls may run at the same time.</li>
           <li>Output limits, and where full outputs are kept.</li>
           <li>Which failures code retries, and which go to the model.</li>
         </ul>
