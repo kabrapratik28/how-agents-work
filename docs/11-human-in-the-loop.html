@@ -124,10 +124,33 @@
     <h2>Approvals that take hours</h2>
     <p>A nightly Patch run reaches the <code>open_pr</code> gate at 2 a.m. Your code saves the checkpoint, sends the request to the team's chat, and lets the process exit. At 9 a.m. a developer approves. A worker loads the checkpoint, confirms the request is unchanged, and opens the pull request.</p>
     <p>Because each pending request lives in storage, many runs can wait for days at once. <a href="12-long-running.html">Chapter 12</a> covers the storage and workers.</p>
+    <h3 id="what-is-saved">What the checkpoint holds</h3>
+    <p>You do not save the running program, with its call stack and open connections. You save data. That is enough, because the model holds nothing between calls, and your loop keeps everything it needs in its state. When Patch's gate fires, it saves the pending request and sets the status to waiting. The loop from <a href="12-long-running.html#checkpoints">chapter 12</a> then saves the state and ends. The checkpoint looks like this:</p>
+<pre><code>{"run": "patch-1042",
+ "status": "waiting for approval",
+ "messages": [ ...every message so far, ending with the open_pr request... ],
+ "pending": {"id": "call_7", "tool": "open_pr",
+             "args": {"branch": "patch/issue-1042", "title": "Fix expired-token login"}},
+ "step": 14, "cost": 1.12}</code></pre>
+    <p>The place where the run stopped is part of this data. The status says the run is waiting, and <code>pending</code> says what for. So resuming does not jump back into old code. A worker loads the checkpoint, turns the decision into a tool result, and starts the same loop again:</p>
+<pre><code>def on_decision(run_id, decision):
+    state = store.load(run_id)
+    call = state.pending
+    if decision.approved:
+        result = execute(call, approved=True)     # the saved request, unchanged
+    else:
+        result = error(call.id, "rejected: " + decision.note)
+    state.messages.append(result)
+    state.pending, state.status = None, "running"
+    store.save(run_id, state)
+    run(run_id)                                   # the loop from chapter 12</code></pre>
+    <p>Two things live outside the checkpoint. The files live in the workspace, so keep them where a new worker can find them, such as a pushed branch. And the world can change while a request waits, so check again before you run it. For example, confirm that the branch has not moved since the person looked. To test the whole design, stop the process while a request waits, then start a new one. The run should finish the same way.</p>
+    <p>There is a second way to resume, called record and replay. Your code runs again from the top, and every finished step returns its saved result at once, so the code quickly reaches the wait and goes on from there (<a href="12-long-running.html#durable-execution">chapter 12</a>).</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
         <li><strong>Deep Agents</strong> (0.7.28) pauses a gated run with a LangGraph interrupt, which needs a checkpointer to save the state. The run resumes with one decision per request: approve, edit, reject, or respond.</li>
+        <li><strong>LangGraph</strong>, which Deep Agents runs on, finds the saved run by its thread id. On resume, it does not jump to the line that paused. It reruns the paused step from its start, and this time the pause returns the person's decision. So its docs warn that code before the pause must be safe to run twice.</li>
         <li><strong>Hermes</strong> (v0.22.2) waits inside the running process instead. In its chat gateway, the agent blocks until someone sends <code>/approve</code> or <code>/deny</code>, and after 300 seconds the request counts as denied.</li>
       </ul>
     </aside>
