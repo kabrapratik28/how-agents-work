@@ -103,6 +103,25 @@
     </aside>
   </section>
 
+  <section id="inside-outside">
+    <h2>What runs inside the sandbox</h2>
+    <p>Patch's loop does not run in the container. The loop, the model calls, the run's state, and the Git token all stay outside, in your code. Only tool execution goes inside: the commands the model asks for, the scripts it writes, and its file edits. So the sandbox never needs the agent's history or memory. Your loop builds the model's context outside, as always. The sandbox needs only the files and programs that the commands work on.</p>
+    <p>You also do not pick a place for each command. You pick once for the whole run, and every shell and file tool goes there. If file edits happened on your laptop and tests ran in a container, the tests would check files that never changed.</p>
+    <p>The user's files are still on their machine, so decide how the sandbox gets what it needs:</p>
+    <ul>
+      <li><strong>Show it the real folder.</strong> Mount the project into a container, or run on the laptop inside operating-system limits, like Claude Code's sandbox (<a href="#network-policies">see below</a>). Changes appear at once. But a bad command damages real files, and a secret in the folder, such as a <code>.env</code> file, is readable inside.</li>
+      <li><strong>Give it a copy, and bring back a diff.</strong> Clone the repo inside, let the agent work, and review its changes as a diff or a pull request. This is Patch's choice, because the real files change only after review.</li>
+      <li><strong>Keep a few tools outside.</strong> Some actions need something the sandbox must not hold, such as the Git token. Give each of those a narrow tool that runs outside, like <code>open_pr</code>, and let your dispatcher check every call (<a href="#credential-isolation">see below</a>).</li>
+    </ul>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Hermes</strong> (v0.22.2) sets one terminal backend in its config, such as local, Docker, SSH, or Modal. Its loop, sessions, and memory stay in the Hermes process. Every shell command, file tool call, and script runs in the chosen backend. The default is local, which runs commands on your machine with no sandbox. That is why Hermes checks dangerous commands before running them there.</li>
+        <li>Its Docker backend does not mount the folder you started Hermes from unless you turn on <code>docker_mount_cwd_to_workspace</code>. Then file tools and commands both see that project at <code>/workspace</code>. The SSH, Modal, and Daytona backends get none of your local files. Hermes copies in only credential files, skills, and caches.</li>
+      </ul>
+    </aside>
+  </section>
+
   <section id="vms">
     <h2>Virtual machines</h2>
     <p>A service that runs code from strangers' pull requests should not rely on a shared kernel. It runs each job in a virtual machine (VM) instead. A VM has its own kernel, and a hypervisor, the software that runs VMs, walls it off from the host. MicroVMs are stripped-down VMs that start almost as fast as containers. As a rule of thumb, use a container per task for internal coding agents, and a VM for code you trust less.</p>
@@ -202,6 +221,7 @@
         <h3>Decide yourself</h3>
         <ul>
           <li>What the sandbox can see, reach, and hold: folders, network, and secrets.</li>
+          <li>How the sandbox gets the user's files: the real folder, a copy that comes back as a diff, or a narrow tool outside.</li>
           <li>Which rules must live in other systems, such as branch protection and token limits.</li>
           <li>How strong the wall must be: process rules, a container, or a VM.</li>
         </ul>
