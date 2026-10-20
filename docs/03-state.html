@@ -154,6 +154,7 @@
     last_edit = state["last_edit_step"] or 0
     return t is not None and t["exit"] == 0 and t["after_step"] > last_edit</code></pre>
     <p>This check refuses "done" when the last edit came after the last passing test run.</p>
+    <p>The check uses step numbers instead of clock times because it needs only the order of events. Your loop owns the step counter, so the counter never jumps, and it moves with the checkpoint when another worker resumes the run. A clock can be reset, and two machines' clocks can disagree. Changes from outside the run, such as a teammate's push, never get a step number, so <code>files_read</code> compares hashes instead.</p>
   </section>
 
   <section id="events">
