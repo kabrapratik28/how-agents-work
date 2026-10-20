@@ -104,7 +104,7 @@
     "cost_usd": 0.42, "max_cost_usd": 2.00,
     "todo": [{"task": "fix the expiry check", "status": "in_progress"}],
     "pending_approval": None,
-    "files_read": ["auth/session.py"],
+    "files_read": {"auth/session.py": "sha:9f2c41"},   # path -> hash of the version read
     "files_changed": ["auth/session.py"],
     "last_edit_step": 5,
     "last_test": {"cmd": "pytest tests/test_auth.py", "exit": 0, "after_step": 6},
@@ -115,6 +115,21 @@
       <p class="callout-title">Systems analogy</p>
       <p>Agent state works like application state. The runtime is the server, the state object is its store, and the context is a page rendered from that store for one request.</p>
       <p class="breaks"><strong>Where it breaks:</strong> a rendered page goes to a person, and code enforces every rule. Here the page goes to a model that picks the next action from it, so a missing or stale fact changes what it does. The model also cannot write to the store. Its tool calls are requests that your runtime applies or refuses.</p>
+    </aside>
+    <p>The three file fields show why evidence fields exist. Each one lets your code check something instead of trusting it:</p>
+    <ul>
+      <li><strong><code>files_read</code></strong> maps each file the model has seen to a hash of the version it saw. Before an edit, your code compares that hash with the file on disk. If the model never read the file, or the file changed after the read, your code refuses the edit and asks the model to read it again. Otherwise the model would edit from an old copy.</li>
+      <li><strong><code>files_changed</code></strong> lists the files this run edited. The reviewer and the pull request need that list. Scope checks read it, such as "no test file changed" (<a href="06-planning.html#what-goes-wrong">chapter 6</a>), and so does the undo step that restores the originals.</li>
+      <li><strong><code>last_edit_step</code></strong> records when the code last changed. A passing test counts only if it ran after that step, as the <a href="#source-of-truth">done check below</a> shows. This works for Patch because only <code>edit_file</code> changes code. If shell commands can change files too, save a hash of the workspace with each test run instead.</li>
+    </ul>
+    <p>The message log holds the same facts, but in a form code cannot easily use. Compaction can summarize old reads away, and your code should not have to search a conversation to enforce a rule.</p>
+    <aside class="callout cases">
+      <p class="callout-title">How real systems do it</p>
+      <ul>
+        <li><strong>Hermes</strong> (v0.22.2) records when each task read each file. By default, <code>write_file</code> refuses to overwrite a file the task never read, or one that changed on disk after its last read, for example because another subagent wrote it.</li>
+        <li><strong>Pi</strong> (1.3.0) puts lists of files read and modified into each compaction summary, so the model still knows them after old messages leave the context.</li>
+        <li><strong>Deep Agents</strong> (0.7.28) says in its <code>edit_file</code> description that the edit fails if the file was not read first. But nothing tracks reads, so the rule is only a request to the model.</li>
+      </ul>
     </aside>
   </section>
 
@@ -171,8 +186,8 @@ state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre
           <tr><th scope="row">Conversation history</th><td>Runtime message log, saved as a session file</td><td>Yes: recent turns in full, older ones summarized</td><td>The model needs the request and what it has tried</td></tr>
           <tr><th scope="row">Task status</th><td>Runtime state</td><td>Rarely</td><td>It controls the loop. "Running" tells the model nothing.</td></tr>
           <tr><th scope="row">Current plan</th><td>Runtime state, or a plan file</td><td>Yes, rendered each call</td><td>It keeps the model on track over many steps</td></tr>
-          <tr><th scope="row">Files inspected</th><td>Runtime state: paths and the step of each read</td><td>As a short list</td><td>It avoids re-reading. The contents stay in the log.</td></tr>
-          <tr><th scope="row">Files changed</th><td>Runtime state, plus git in the world</td><td>Yes, as a list or a diff</td><td>The model must keep track of its own edits</td></tr>
+          <tr><th scope="row">Files inspected</th><td>Runtime state: each path, with a hash of the version read</td><td>As a short list</td><td>Your code can refuse edits to files the model never read, or that changed since. The contents stay in the log.</td></tr>
+          <tr><th scope="row">Files changed</th><td>Runtime state, plus git in the world</td><td>Yes, as a list or a diff</td><td>Review, scope checks, and undo need it. The model needs a reminder of its own edits.</td></tr>
           <tr><th scope="row">Test results</th><td>Latest run in state, full output saved to a file</td><td>Yes: the summary and the failures</td><td>They drive the next step. The full log is one tool call away.</td></tr>
           <tr><th scope="row">Outstanding todos</th><td>Runtime state</td><td>Yes</td><td>So nothing gets dropped</td></tr>
           <tr><th scope="row">Approvals</th><td>Runtime state, checkpointed while waiting</td><td>Only the decisions, as tool results</td><td>The runtime enforces them. The model needs only the outcome.</td></tr>
@@ -246,7 +261,7 @@ state = reduce(apply, events, initial_state())   # replay to rebuild</code></pre
 +     "messages": [...],
 +     "status": "running",          # running | waiting_for_approval | done | failed
 +     "step": 0, "max_steps": 30,
-+     "files_read": [], "files_changed": [],
++     "files_read": {}, "files_changed": [],   # {path: hash}, [paths]
 +     "last_edit_step": None,
 +     "last_test": None,            # {"cmd", "exit", "after_step"}
 +     "approvals": [],
