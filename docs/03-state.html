@@ -100,7 +100,7 @@
 <pre><code>state = {
     "messages": [...],
     "status": "running",        # running | waiting_for_approval | done | failed
-    "step": 7, "max_steps": 30,
+    "step": 7, "max_steps": 30, # one counter for the whole run
     "cost_usd": 0.42, "max_cost_usd": 2.00,
     "todo": [{"task": "fix the expiry check", "status": "in_progress"}],
     "pending_approval": None,
@@ -109,8 +109,8 @@
     "last_edit_step": 5,
     "last_test": {"cmd": "pytest tests/test_auth.py", "exit": 0, "after_step": 6},
 }</code></pre>
-    <p>Runtime state is what the loop itself keeps track of. Some fields steer the loop, such as the step count, the budgets, and a pending approval. Some record evidence, such as the files changed and the last test run. Some exist for the model: the todo list, for example, gets copied into each context.</p>
-    <p>The model never writes this object. It asks for tool calls, and your runtime updates state from what the tools returned, not from what the model claims happened.</p>
+    <p>Runtime state is what the loop itself keeps track of. Some fields steer the loop, such as the step count, the budgets, and a pending approval. Almost every agent has these. Some record evidence, such as the files changed and the last test run. These come from the agent's done check, so they differ from agent to agent. Patch is judged by its tests, so it tracks the last test run. An expense agent would track the receipt, the policy check, and the filing instead. Some fields exist for the model: the todo list, for example, gets copied into each context.</p>
+    <p>The model never writes this object directly. It asks for tool calls, and your runtime updates state from what the tools returned, not from what the model claims happened. You can still give the model fields of its own. A todo tool lets it rewrite its list, and a notes or file tool lets it save anything under names it picks. Your runtime stores what the model writes there, but never treats it as evidence. If the model could set <code>last_test</code>, it could mark its own tests as passed.</p>
     <aside class="callout analogy">
       <p class="callout-title">Systems analogy</p>
       <p>Agent state works like application state. The runtime is the server, the state object is its store, and the context is a page rendered from that store for one request.</p>
@@ -120,15 +120,15 @@
     <ul>
       <li><strong><code>files_read</code></strong> maps each file the model has seen to a hash of the version it saw. Before an edit, your code compares that hash with the file on disk. If the model never read the file, or the file changed after the read, your code refuses the edit and asks the model to read it again. Otherwise the model would edit from an old copy.</li>
       <li><strong><code>files_changed</code></strong> lists the files this run edited. The reviewer and the pull request need that list. Scope checks read it, such as "no test file changed" (<a href="06-planning.html#what-goes-wrong">chapter 6</a>), and so does the undo step that restores the originals.</li>
-      <li><strong><code>last_edit_step</code></strong> records when the code last changed. A passing test counts only if it ran after that step, as the <a href="#source-of-truth">done check below</a> shows. This works for Patch because only <code>edit_file</code> changes code. If shell commands can change files too, save a hash of the workspace with each test run instead.</li>
+      <li><strong><code>last_edit_step</code></strong> records the step of the latest edit to any file, because an edit anywhere can break a test. A passing test counts only if it ran after that step, as the <a href="#source-of-truth">done check below</a> shows. This works for Patch because only <code>edit_file</code> changes code. If shell commands can change files too, save a hash of the workspace with each test run instead.</li>
     </ul>
     <p>The message log holds the same facts, but in a form code cannot easily use. Compaction can summarize old reads away, and your code should not have to search a conversation to enforce a rule.</p>
     <aside class="callout cases">
       <p class="callout-title">How real systems do it</p>
       <ul>
         <li><strong>Hermes</strong> (v0.22.2) records when each task read each file. By default, <code>write_file</code> refuses to overwrite a file the task never read, or one that changed on disk after its last read, for example because another subagent wrote it.</li>
-        <li><strong>Pi</strong> (1.3.0) puts lists of files read and modified into each compaction summary, so the model still knows them after old messages leave the context.</li>
-        <li><strong>Deep Agents</strong> (0.7.28) says in its <code>edit_file</code> description that the edit fails if the file was not read first. But nothing tracks reads, so the rule is only a request to the model.</li>
+        <li><strong>Pi</strong> (1.3.0) keeps only a generic core in its agent state: the model, its settings, the tools, and the messages. Its compaction summary lists files read and modified, so the model still knows them after old messages leave the context.</li>
+        <li><strong>Deep Agents</strong> (0.7.28) builds state from parts. Each add-on brings its own fields, such as a todo list, and you can add fields of your own. Its <code>edit_file</code> description says that the edit fails if the file was not read first. But nothing tracks reads, so the rule is only a request to the model.</li>
       </ul>
     </aside>
   </section>
